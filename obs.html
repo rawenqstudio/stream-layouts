@@ -2,120 +2,117 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>WIDOK OBS</title>
+    <title>WIDOK OBS (DEBUG)</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; color: white; font-family: monospace; }
         
-        /* Kontener i style układów (to co już masz) */
-        #video-container { width: 100%; height: 100%; transition: all 0.5s ease; position: relative; }
-        video { object-fit: cover; border: 2px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.5); transition: all 0.5s ease; background: #000; }
+        #video-container { width: 100%; height: 100%; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; }
+        
+        video { 
+            object-fit: cover; 
+            border: 2px solid red; /* Czerwona ramka = wideo jest w DOM */
+            background: #000; 
+            max-width: 45%; max-height: 45%;
+        }
 
-        /* UKŁADY */
-        .layout-grid { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; padding: 20px; box-sizing: border-box; }
-        .layout-grid video { width: 45%; height: 45%; }
-
-        .layout-sidebar-right { display: flex; flex-direction: column; justify-content: center; align-items: flex-end; padding-right: 20px; height: 100vh; }
-        .layout-sidebar-right video { width: 300px; height: 169px; margin-bottom: 10px; }
-
-        .layout-bottom { display: flex; flex-direction: row; justify-content: center; align-items: flex-end; padding-bottom: 20px; height: 100vh; }
-        .layout-bottom video { width: 250px; height: 140px; margin: 0 10px; }
+        /* Panel diagnostyczny na górze */
+        #debug-panel {
+            position: absolute; top: 0; left: 0; width: 100%; background: rgba(0,0,0,0.8); z-index: 9999; padding: 10px; font-size: 12px; pointer-events: none;
+        }
+        #force-play-btn {
+            position: absolute; bottom: 20px; right: 20px; z-index: 9999; padding: 20px; background: red; color: white; border: none; font-size: 20px; cursor: pointer;
+        }
     </style>
 </head>
 <body>
-    <div id="video-container" class="layout-grid"></div>
+
+    <div id="debug-panel">Czekam na połączenie... (Wersja Debug v2)</div>
+    <button id="force-play-btn" onclick="forcePlay()">⚠️ KLIKNIJ TU JEŚLI CZARNO</button>
+
+    <div id="video-container"></div>
 
     <script>
-        // Pobierz ID z linku (?room=XYZ) lub użyj domyślnego
+        function log(msg) {
+            document.getElementById('debug-panel').innerText = msg;
+            console.log(msg);
+        }
+
         const urlParams = new URLSearchParams(window.location.search);
         const myID = urlParams.get('room') || 'test-room';
-
-        console.log("Uruchamiam OBS z ID:", myID);
-        
-        // Reszta kodu bez zmian...
-        // WAŻNE: Tutaj wklej dane ze strony Metered.ca
-        const turnConfig = [
-            { urls: "stun:stun.l.google.com:19302" }, // STUN Google (zawsze warto mieć)
-            
-            // Publiczne serwery TURN (Open Relay Project)
-            {
-                urls: "turn:openrelay.metered.ca:80",
-                username: "openrelayproject",
-                credential: "openrelayproject"
-            },
-            {
-                urls: "turn:openrelay.metered.ca:443",
-                username: "openrelayproject",
-                credential: "openrelayproject"
-            },
-            {
-                urls: "turn:openrelay.metered.ca:443?transport=tcp",
-                username: "openrelayproject",
-                credential: "openrelayproject"
-            }
-        ];
-
-        // Przekazujemy konfigurację do PeerJS
-        const peer = new Peer(myID, {
-            config: {
-                iceServers: turnConfig
-            }
-        });
-        // ... (tutaj cała reszta Twojego kodu z addVideo, muted=true itd.)
         const container = document.getElementById('video-container');
 
+        // KONFIGURACJA TURN (Open Relay)
+        const turnConfig = [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+            { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+            { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
+        ];
+
+        const peer = new Peer(myID, { config: { iceServers: turnConfig }, debug: 2 });
+
         peer.on('open', (id) => {
-            console.log('Gotowy! Twoje ID to: ' + id);
+            log(`OBS Gotowy. ID: ${id}. Czekam na gości...`);
         });
 
-        // 2. Obsługa połączeń WIDEO (od Gości)
+        peer.on('error', (err) => {
+            log(`Błąd PeerJS: ${err.type}`);
+        });
+
         peer.on('call', (call) => {
-            console.log("Gość dzwoni...");
-            call.answer(); // Odbieramy bez wysyłania własnego wideo
+            log("Ktoś dzwoni! Odbieram...");
+            call.answer(); 
+            
             call.on('stream', (remoteStream) => {
+                log("Otrzymano strumień (Stream)! Przetwarzanie...");
                 addVideo(remoteStream, call.peer);
             });
+
+            call.on('error', (err) => log("Błąd połączenia: " + err));
         });
 
-        // 3. Obsługa połączeń DANYCH (od Reżysera) - Tego brakowało wcześniej!
+        // Obsługa danych (układów)
         peer.on('connection', (conn) => {
-            console.log("Reżyser połączony!");
-            
-            // Nasłuchiwanie na dane (komendy)
             conn.on('data', (data) => {
-                console.log("Otrzymano rozkaz:", data);
-                
-                // Jeśli to rozkaz zmiany układu
-                if(data.type === 'layout') {
-                    container.className = data.mode;
-                }
-                
-                // Tutaj w przyszłości dodasz np. ukrywanie konkretnej kamery
+                if(data.type === 'layout') container.className = data.mode;
             });
         });
 
         function addVideo(stream, id) {
-            // Zabezpieczenie przed dublowaniem
             if(document.getElementById(`vid-${id}`)) return;
 
-            console.log("Dodaję wideo dla ID:", id); // Log dla pewności
+            log(`Dodaję element VIDEO dla ID: ${id}`);
 
             const video = document.createElement('video');
             video.srcObject = stream;
             video.id = `vid-${id}`;
-            
-            // WAŻNE: Wyciszenie pozwala na autostart bez klikania w stronę
-            video.muted = true; 
-            
+            video.muted = true;  // WAŻNE
             video.autoplay = true;
-            video.playsInline = true; 
-            
-            // Dodatkowe wymuszenie odtwarzania, gdy dane dotrą
+            video.playsInline = true;
+
+            // Zdarzenia diagnostyczne wideo
             video.onloadedmetadata = () => {
-                video.play().catch(e => console.error("Błąd autostartu:", e));
+                log(`Metadane wideo załadowane. Rozdzielczość: ${video.videoWidth}x${video.videoHeight}`);
+                video.play().catch(e => log("Autoplay zablokowany: " + e));
+            };
+            
+            video.onresize = () => {
+                log(`Zmiana rozdzielczości: ${video.videoWidth}x${video.videoHeight}`);
             };
 
             container.appendChild(video);
+        }
+
+        // Funkcja ratunkowa
+        window.forcePlay = function() {
+            const videos = document.querySelectorAll('video');
+            videos.forEach(v => {
+                v.muted = true;
+                v.play()
+                .then(() => log("Wymuszono start wideo!"))
+                .catch(e => log("Błąd wymuszenia: " + e));
+            });
         }
     </script>
 </body>
