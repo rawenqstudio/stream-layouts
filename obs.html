@@ -33,7 +33,34 @@
         console.log("Uruchamiam OBS z ID:", myID);
         
         // Reszta kodu bez zmian...
-        const peer = new Peer(myID);
+        // WAŻNE: Tutaj wklej dane ze strony Metered.ca
+        const turnConfig = [
+            { urls: "stun:stun.l.google.com:19302" }, // STUN Google (zawsze warto mieć)
+            
+            // Publiczne serwery TURN (Open Relay Project)
+            {
+                urls: "turn:openrelay.metered.ca:80",
+                username: "openrelayproject",
+                credential: "openrelayproject"
+            },
+            {
+                urls: "turn:openrelay.metered.ca:443",
+                username: "openrelayproject",
+                credential: "openrelayproject"
+            },
+            {
+                urls: "turn:openrelay.metered.ca:443?transport=tcp",
+                username: "openrelayproject",
+                credential: "openrelayproject"
+            }
+        ];
+
+        // Przekazujemy konfigurację do PeerJS
+        const peer = new Peer(myID, {
+            config: {
+                iceServers: turnConfig
+            }
+        });
         // ... (tutaj cała reszta Twojego kodu z addVideo, muted=true itd.)
         const container = document.getElementById('video-container');
 
