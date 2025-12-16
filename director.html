@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>REŻYSERKA</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #333; color: white; text-align: center; padding: 20px; }
+        button { padding: 15px 25px; font-size: 18px; margin: 10px; cursor: pointer; border: none; border-radius: 5px; background: #007bff; color: white; transition: 0.2s; }
+        button:hover { background: #0056b3; }
+        input { padding: 10px; font-size: 16px; width: 200px; }
+        .status { margin-top: 10px; color: #aaa; }
+        .controls { display: none; margin-top: 30px; border-top: 1px solid #555; padding-top: 20px;}
+    </style>
+</head>
+<body>
+    <h1>Panel Reżysera</h1>
+    
+    <div>
+        <label>ID Studia (OBS):</label>
+        <input type="text" id="target-id" value="pokoj1">
+        <button onclick="connectToOBS()">Połącz z OBS</button>
+    </div>
+    <div class="status" id="status-msg">Niepołączony</div>
+
+    <div class="controls" id="control-panel">
+        <h2>Wybierz układ kamer:</h2>
+        <button onclick="sendLayout('layout-grid')">🔳 Grid (Siatka)</button><br>
+        <button onclick="sendLayout('layout-sidebar-right')">➡️ Pasek Prawy</button><br>
+        <button onclick="sendLayout('layout-bottom')">⬇️ Pasek Dolny</button>
+    </div>
+
+    <script>
+        const peer = new Peer(); 
+        let conn = null;
+
+        // AUTOMATYZACJA: Sprawdź czy w linku jest ID pokoju
+        window.onload = function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomID = urlParams.get('room');
+            
+            if(roomID) {
+                document.getElementById('target-id').value = roomID;
+                // Opcjonalnie: Automatyczne połączenie po 1 sekundzie
+                setTimeout(connectToOBS, 500);
+            }
+        }
+
+        function connectToOBS() {
+            // ... (reszta Twojej funkcji connectToOBS bez zmian)
+            const targetId = document.getElementById('target-id').value;
+            document.getElementById('status-msg').innerText = "Łączenie...";
+
+            // Nawiązujemy połączenie DANYCH (nie wideo)
+            conn = peer.connect(targetId);
+
+            conn.on('open', () => {
+                document.getElementById('status-msg').innerText = "✅ Połączono ze studiem!";
+                document.getElementById('status-msg').style.color = "#0f0";
+                document.getElementById('control-panel').style.display = "block";
+            });
+
+            conn.on('error', (err) => {
+                alert("Błąd połączenia: " + err);
+            });
+        }
+
+        function sendLayout(layoutName) {
+            if(conn && conn.open) {
+                // Wysyłamy obiekt JSON z komendą
+                conn.send({ type: 'layout', mode: layoutName });
+                console.log("Wysłano:", layoutName);
+            } else {
+                alert("Brak połączenia z OBS!");
+            }
+        }
+    </script>
+</body>
+</html>

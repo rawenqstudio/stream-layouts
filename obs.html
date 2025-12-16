@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>WIDOK OBS</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+        
+        /* Kontener i style układów (to co już masz) */
+        #video-container { width: 100%; height: 100%; transition: all 0.5s ease; position: relative; }
+        video { object-fit: cover; border: 2px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.5); transition: all 0.5s ease; background: #000; }
+
+        /* UKŁADY */
+        .layout-grid { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; padding: 20px; box-sizing: border-box; }
+        .layout-grid video { width: 45%; height: 45%; }
+
+        .layout-sidebar-right { display: flex; flex-direction: column; justify-content: center; align-items: flex-end; padding-right: 20px; height: 100vh; }
+        .layout-sidebar-right video { width: 300px; height: 169px; margin-bottom: 10px; }
+
+        .layout-bottom { display: flex; flex-direction: row; justify-content: center; align-items: flex-end; padding-bottom: 20px; height: 100vh; }
+        .layout-bottom video { width: 250px; height: 140px; margin: 0 10px; }
+    </style>
+</head>
+<body>
+    <div id="video-container" class="layout-grid"></div>
+
+    <script>
+        // Pobierz ID z linku (?room=XYZ) lub użyj domyślnego
+        const urlParams = new URLSearchParams(window.location.search);
+        const myID = urlParams.get('room') || 'test-room';
+
+        console.log("Uruchamiam OBS z ID:", myID);
+        
+        // Reszta kodu bez zmian...
+        const peer = new Peer(myID);
+        // ... (tutaj cała reszta Twojego kodu z addVideo, muted=true itd.)
+        const container = document.getElementById('video-container');
+
+        peer.on('open', (id) => {
+            console.log('Gotowy! Twoje ID to: ' + id);
+        });
+
+        // 2. Obsługa połączeń WIDEO (od Gości)
+        peer.on('call', (call) => {
+            console.log("Gość dzwoni...");
+            call.answer(); // Odbieramy bez wysyłania własnego wideo
+            call.on('stream', (remoteStream) => {
+                addVideo(remoteStream, call.peer);
+            });
+        });
+
+        // 3. Obsługa połączeń DANYCH (od Reżysera) - Tego brakowało wcześniej!
+        peer.on('connection', (conn) => {
+            console.log("Reżyser połączony!");
+            
+            // Nasłuchiwanie na dane (komendy)
+            conn.on('data', (data) => {
+                console.log("Otrzymano rozkaz:", data);
+                
+                // Jeśli to rozkaz zmiany układu
+                if(data.type === 'layout') {
+                    container.className = data.mode;
+                }
+                
+                // Tutaj w przyszłości dodasz np. ukrywanie konkretnej kamery
+            });
+        });
+
+        function addVideo(stream, id) {
+            // Zabezpieczenie przed dublowaniem
+            if(document.getElementById(`vid-${id}`)) return;
+
+            console.log("Dodaję wideo dla ID:", id); // Log dla pewności
+
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            video.id = `vid-${id}`;
+            
+            // WAŻNE: Wyciszenie pozwala na autostart bez klikania w stronę
+            video.muted = true; 
+            
+            video.autoplay = true;
+            video.playsInline = true; 
+            
+            // Dodatkowe wymuszenie odtwarzania, gdy dane dotrą
+            video.onloadedmetadata = () => {
+                video.play().catch(e => console.error("Błąd autostartu:", e));
+            };
+
+            container.appendChild(video);
+        }
+    </script>
+</body>
+</html>
