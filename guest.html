@@ -40,24 +40,26 @@
         }
 
         // Ta sama konfiguracja co w OBS
+        // WAŻNE: Podmień te wartości na swoje z Metered.ca
+        const METERED_USER = "6d29fb99ae677ec0acd6e982";
+        const METERED_PASS = "6MZCO1eecPhRF7yT";
+
         const turnConfig = [
-            { urls: "stun:stun.l.google.com:19302" }, // STUN Google (zawsze warto mieć)
-            
-            // Publiczne serwery TURN (Open Relay Project)
-            {
-                urls: "turn:openrelay.metered.ca:80",
-                username: "openrelayproject",
-                credential: "openrelayproject"
+            { urls: "stun:stun.l.google.com:19302" }, // Zawsze warto mieć Google STUN jako backup
+            { 
+                urls: "turn:global.turn.metered.ca:80",
+                username: METERED_USER,
+                credential: METERED_PASS
             },
-            {
-                urls: "turn:openrelay.metered.ca:443",
-                username: "openrelayproject",
-                credential: "openrelayproject"
+            { 
+                urls: "turn:global.turn.metered.ca:443",
+                username: METERED_USER,
+                credential: METERED_PASS
             },
-            {
-                urls: "turn:openrelay.metered.ca:443?transport=tcp",
-                username: "openrelayproject",
-                credential: "openrelayproject"
+            { 
+                urls: "turn:global.turn.metered.ca:443?transport=tcp",
+                username: METERED_USER,
+                credential: METERED_PASS
             }
         ];
 
