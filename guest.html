@@ -2,143 +2,116 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>GOŚĆ (Kamera)</title>
+    <title>GOŚĆ (DIAGNOSTYKA TURN)</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #222; color: white; padding: 20px; }
-        video { width: 300px; border: 2px solid #00ff00; border-radius: 8px; margin-top: 20px; background: #000; }
-        input, button { padding: 10px; font-size: 16px; }
-        #logs { margin-top: 20px; color: #aaa; font-size: 0.9em; text-align: left; max-width: 400px; margin-left: auto; margin-right: auto; }
-        .error { color: #ff4444; font-weight: bold; }
-        .success { color: #00ff00; }
-        .container { background: #333; padding: 20px; border-radius: 10px; display: inline-block; }
+        body { font-family: monospace; background: #222; color: #0f0; padding: 10px; font-size: 12px; }
+        video { width: 100%; border: 2px solid #555; margin-bottom: 10px; background: #000; }
+        #logs { border-top: 1px solid #555; padding-top: 10px; white-space: pre-wrap; word-break: break-all; }
+        .error { color: #ff5555; background: #200; }
+        .relay { color: #ffff00; font-weight: bold; } /* Wyróżniamy Relay na żółto */
+        button { padding: 15px; width: 100%; font-size: 16px; margin-bottom: 10px; cursor: pointer; }
+        input { width: 100%; padding: 10px; margin-bottom: 10px; box-sizing: border-box; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Jesteś Gościem</h1>
-        <video id="localVideo" autoplay muted playsinline></video>
-        <br><br>
-        
-        <label>Dołącz do pokoju (ID OBS):</label>
-        <input type="text" id="target-id" value="">
-        <button id="join-btn" onclick="joinRoom()">DOŁĄCZ</button>
-
-        <div id="logs"></div>
-    </div>
+    <h3>Diagnostyka LTE/TURN</h3>
+    <video id="localVideo" autoplay muted playsinline></video>
+    
+    <input type="text" id="target-id" placeholder="ID Pokoju">
+    <button onclick="startCall()">POŁĄCZ (Start Test)</button>
+    
+    <div id="logs">Logi pojawią się tutaj...</div>
 
     <script>
-        // --- 1. Definicja funkcji logowania (TEGO BRAKOWAŁO) ---
-        function log(msg, type = 'info') {
+        function log(msg, type='') {
             const logs = document.getElementById('logs');
-            const p = document.createElement('div');
-            p.innerText = `> ${msg}`;
-            if(type === 'error') p.className = 'error';
-            if(type === 'success') p.className = 'success';
-            logs.appendChild(p);
-            console.log(msg);
+            const div = document.createElement('div');
+            
+            // Wyróżnianie kluczowych słów
+            if(msg.includes('relay')) { 
+                type = 'relay'; 
+                msg = ">>> ZNALEZIONO TURN (RELAY): " + msg;
+            }
+            if(type) div.className = type;
+            
+            div.innerText = `${new Date().toLocaleTimeString()} - ${msg}`;
+            logs.prepend(div); // Najnowsze na górze
         }
 
-        // Ta sama konfiguracja co w OBS
-        // WAŻNE: Podmień te wartości na swoje z Metered.ca
-        const METERED_USER = "6d29fb99ae677ec0acd6e982";
-        const METERED_PASS = "6MZCO1eecPhRF7yT";
+        // --- KONFIGURACJA ---
+        const MY_METERED_USER = "6d29fb99ae677ec0acd6e982"; // <--- SPRAWDŹ CZY NIE MA SPACJI!
+        const MY_METERED_PASS = "6MZCO1eecPhRF7yT"; // <--- SPRAWDŹ CZY NIE MA SPACJI!
 
         const turnConfig = [
-            { urls: "stun:stun.l.google.com:19302" }, // Zawsze warto mieć Google STUN jako backup
+            { urls: "stun:stun.l.google.com:19302" },
             { 
                 urls: "turn:global.turn.metered.ca:80",
-                username: METERED_USER,
-                credential: METERED_PASS
+                username: MY_METERED_USER,
+                credential: MY_METERED_PASS
             },
             { 
                 urls: "turn:global.turn.metered.ca:443",
-                username: METERED_USER,
-                credential: METERED_PASS
+                username: MY_METERED_USER,
+                credential: MY_METERED_PASS
             },
             { 
                 urls: "turn:global.turn.metered.ca:443?transport=tcp",
-                username: METERED_USER,
-                credential: METERED_PASS
+                username: MY_METERED_USER,
+                credential: MY_METERED_PASS
             }
         ];
 
-        const peer = new Peer(undefined, { // undefined, bo gość ma losowe ID
-            config: {
-                iceServers: turnConfig
-            }
-        }); 
+        // Dodajemy opcję debug: 3, żeby widzieć wszystko
+        const peer = new Peer({ 
+            config: { iceServers: turnConfig }, 
+            debug: 3 
+        });
 
-        // --- 2. Automatyczne pobieranie ID z linku ---
-        window.onload = function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const roomID = urlParams.get('room');
-            
-            if(roomID) {
-                document.getElementById('target-id').value = roomID;
-                log(`Wykryto pokój: ${roomID}. Kliknij Dołącz.`);
-            } else {
-                log('Brak ID pokoju w linku. Wpisz ręcznie.', 'error');
-            }
-        }
-
-        // --- 3. Obsługa zdarzeń PeerJS ---
+        // Nasłuchiwanie na własne kandydatury (To nam powie czy TURN działa)
         peer.on('open', (id) => {
-            log(`Twoje ID Gościa: ${id}`, 'success');
-        });
-
-        peer.on('error', (err) => {
-            log(`Błąd PeerJS: ${err.type}`, 'error');
-            if(err.type === 'peer-unavailable') {
-                log('Nie znaleziono OBS o takim ID. Sprawdź czy OBS jest włączony!', 'error');
-            }
-        });
-
-        // --- 4. Funkcja dołączania ---
-        function joinRoom() {
-            const targetId = document.getElementById('target-id').value;
-            const btn = document.getElementById('join-btn');
+            log(`Moje ID: ${id}`);
+            log("Czekam na nawiązanie połączenia...");
             
-            if(!targetId) {
-                log("Wpisz ID pokoju!", "error");
-                return;
-            }
+            // Automatyczne pobranie ID z URL
+            const urlParams = new URLSearchParams(window.location.search);
+            if(urlParams.get('room')) document.getElementById('target-id').value = urlParams.get('room');
+        });
 
-            btn.disabled = true;
-            log(`Próba dostępu do kamery...`);
+        peer.on('error', (err) => log("BŁĄD PEER: " + err.type, 'error'));
 
-            navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-            .then((stream) => {
-                log(`Kamera OK.`, 'success');
+        function startCall() {
+            const targetId = document.getElementById('target-id').value;
+            if(!targetId) return alert("Brak ID!");
+
+            log("Pobieram kamerę...");
+            navigator.mediaDevices.getUserMedia({video: true, audio: true})
+            .then(stream => {
                 document.getElementById('localVideo').srcObject = stream;
-                
-                log(`Dzwonię do OBS: ${targetId}...`);
-                
-                // Dzwonimy (wysyłamy wideo)
-                const call = peer.call(targetId, stream);
-                
-                // Monitorujemy czy zestawiono połączenie
-                call.on('open', () => {
-                     log("Połączenie zestawione! Powinieneś być widoczny w OBS.", "success");
-                });
+                log("Kamera OK. Dzwonię...");
 
-                call.on('close', () => {
-                    log("Rozłączono przez serwer.", 'error');
-                    btn.disabled = false;
-                });
-                
-                call.on('error', (err) => {
-                    log("Błąd wideo: " + err, 'error');
-                    btn.disabled = false;
-                });
+                const call = peer.call(targetId, stream);
+
+                // --- KLUCZOWE: Śledzenie ICE Candidates ---
+                // PeerJS ukrywa to normalnie, ale możemy podglądnąć obiekt connection
+                call.peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        const c = event.candidate;
+                        log(`Kandydat: ${c.type} (${c.protocol}) ${c.address}`);
+                    } else {
+                        log("Koniec szukania kandydatów (Gathering Complete).");
+                    }
+                };
+
+                call.peerConnection.oniceconnectionstatechange = () => {
+                    log(`Stan połączenia: ${call.peerConnection.iceConnectionState}`);
+                };
+
+                call.on('stream', () => log("Odebrano wideo zwrotne (SUKCES!)", 'relay'));
+                call.on('close', () => log("Połączenie zamknięte"));
+                call.on('error', (e) => log("Błąd Call: " + e, 'error'));
             })
-            .catch(err => {
-                log(`Błąd kamery: ${err.name} - ${err.message}`, 'error');
-                if(err.name === 'NotReadableError') {
-                    log('WSKAZÓWKA: Kamera może być zajęta przez inną kartę!', 'error');
-                }
-                btn.disabled = false;
-            });
+            .catch(e => log("Błąd kamery: " + e, 'error'));
         }
     </script>
 </body>
