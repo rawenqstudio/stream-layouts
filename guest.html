@@ -2,114 +2,116 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>GOŚĆ (DIAGNOSTYKA TURN)</title>
+    <title>GOŚĆ (FINAL TEST)</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body { font-family: monospace; background: #222; color: #0f0; padding: 10px; font-size: 12px; }
-        video { width: 100%; border: 2px solid #555; margin-bottom: 10px; background: #000; }
+        body { font-family: monospace; background: #000; color: #0f0; padding: 10px; font-size: 11px; }
+        video { width: 100%; border: 2px solid #555; margin-bottom: 10px; background: #222; }
         #logs { border-top: 1px solid #555; padding-top: 10px; white-space: pre-wrap; word-break: break-all; }
-        .error { color: #ff5555; background: #200; }
-        .relay { color: #ffff00; font-weight: bold; } /* Wyróżniamy Relay na żółto */
-        button { padding: 15px; width: 100%; font-size: 16px; margin-bottom: 10px; cursor: pointer; }
-        input { width: 100%; padding: 10px; margin-bottom: 10px; box-sizing: border-box; }
+        .relay { color: #ffff00; font-weight: bold; background: #330; padding: 2px; } 
+        .error { color: #ff5555; font-weight: bold; }
+        button { padding: 20px; width: 100%; font-size: 18px; font-weight: bold; background: #004400; color: white; border: none; margin-bottom: 10px; }
+        input { width: 100%; padding: 10px; margin-bottom: 10px; color: black;}
     </style>
 </head>
 <body>
-    <h3>Diagnostyka LTE/TURN</h3>
+    <h3>TEST LTE (WYMUSZENIE TCP)</h3>
     <video id="localVideo" autoplay muted playsinline></video>
     
     <input type="text" id="target-id" placeholder="ID Pokoju">
-    <button onclick="startCall()">POŁĄCZ (Start Test)</button>
+    <button onclick="startCall()">POŁĄCZ</button>
     
-    <div id="logs">Logi pojawią się tutaj...</div>
+    <div id="logs">Czekam...</div>
 
     <script>
         function log(msg, type='') {
             const logs = document.getElementById('logs');
             const div = document.createElement('div');
             
-            // Wyróżnianie kluczowych słów
             if(msg.includes('relay')) { 
                 type = 'relay'; 
-                msg = ">>> ZNALEZIONO TURN (RELAY): " + msg;
+                msg = ">>> SUKCES! MAMY TURN (RELAY): " + msg;
             }
             if(type) div.className = type;
             
             div.innerText = `${new Date().toLocaleTimeString()} - ${msg}`;
-            logs.prepend(div); // Najnowsze na górze
+            logs.prepend(div);
         }
 
-        // --- KONFIGURACJA ---
-        const MY_METERED_USER = "6d29fb99ae677ec0acd6e982"; // <--- SPRAWDŹ CZY NIE MA SPACJI!
-        const MY_METERED_PASS = "6MZCO1eecPhRF7yT"; // <--- SPRAWDŹ CZY NIE MA SPACJI!
-
-        const turnConfig = [
-            { urls: "stun:stun.l.google.com:19302" },
-            { 
-                urls: "turn:global.turn.metered.ca:80",
-                username: MY_METERED_USER,
-                credential: MY_METERED_PASS
-            },
-            { 
-                urls: "turn:global.turn.metered.ca:443",
-                username: MY_METERED_USER,
-                credential: MY_METERED_PASS
-            },
+        // --- KONFIGURACJA NA SZTYWNO (WPISZ DANE PONIŻEJ) ---
+        // Upewnij się, że username i credential są w cudzysłowach!
+        
+        const iceServersConfig = [
+            // 1. Najpierw próbujemy TCP (największa szansa na LTE)
             { 
                 urls: "turn:global.turn.metered.ca:443?transport=tcp",
-                username: MY_METERED_USER,
-                credential: MY_METERED_PASS
-            }
+                username: "6d29fb99ae677ec0acd6e982",
+                credential: "6MZCO1eecPhRF7yT"
+            },
+            // 2. Potem zwykły UDP na porcie 80 (omijanie firewalli)
+            { 
+                urls: "turn:global.turn.metered.ca:80",
+                username: "6d29fb99ae677ec0acd6e982",
+                credential: "6MZCO1eecPhRF7yT"
+            },
+            // 3. Standardowy UDP
+            { 
+                urls: "turn:global.turn.metered.ca:443",
+                username: "6d29fb99ae677ec0acd6e982",
+                credential: "6MZCO1eecPhRF7yT"
+            },
+            // 4. STUN Google jako backup
+            { urls: "stun:stun.l.google.com:19302" }
         ];
 
-        // Dodajemy opcję debug: 3, żeby widzieć wszystko
+        // Wyświetl konfigurację w logach, żeby sprawdzić czy nie jest pusta
+        console.log("Moja konfiguracja ICE:", iceServersConfig);
+
         const peer = new Peer({ 
-            config: { iceServers: turnConfig }, 
+            config: { 
+                iceServers: iceServersConfig,
+                iceTransportPolicy: 'relay' // Opcjonalnie: wymuś TYLKO relay do testów (ryzykowne, ale pewne)
+            }, 
             debug: 3 
         });
 
-        // Nasłuchiwanie na własne kandydatury (To nam powie czy TURN działa)
         peer.on('open', (id) => {
             log(`Moje ID: ${id}`);
-            log("Czekam na nawiązanie połączenia...");
-            
-            // Automatyczne pobranie ID z URL
             const urlParams = new URLSearchParams(window.location.search);
             if(urlParams.get('room')) document.getElementById('target-id').value = urlParams.get('room');
         });
 
-        peer.on('error', (err) => log("BŁĄD PEER: " + err.type, 'error'));
+        peer.on('error', (err) => log("BŁĄD PEER: " + err.type + " - " + err.message, 'error'));
 
         function startCall() {
             const targetId = document.getElementById('target-id').value;
             if(!targetId) return alert("Brak ID!");
 
-            log("Pobieram kamerę...");
+            log("Start kamery...");
             navigator.mediaDevices.getUserMedia({video: true, audio: true})
             .then(stream => {
                 document.getElementById('localVideo').srcObject = stream;
-                log("Kamera OK. Dzwonię...");
+                log("Kamera OK. Szukam drogi (Gathering)...");
 
                 const call = peer.call(targetId, stream);
 
-                // --- KLUCZOWE: Śledzenie ICE Candidates ---
-                // PeerJS ukrywa to normalnie, ale możemy podglądnąć obiekt connection
                 call.peerConnection.onicecandidate = (event) => {
                     if (event.candidate) {
                         const c = event.candidate;
-                        log(`Kandydat: ${c.type} (${c.protocol}) ${c.address}`);
+                        // Logujemy typ kandydata
+                        let typeInfo = c.type;
+                        if(typeInfo === 'relay') typeInfo = 'RELAY (TURN) !!!';
+                        log(`Znalazłem drogę: ${typeInfo} (${c.protocol})`);
                     } else {
-                        log("Koniec szukania kandydatów (Gathering Complete).");
+                        log("Koniec szukania dróg.");
                     }
                 };
 
                 call.peerConnection.oniceconnectionstatechange = () => {
                     log(`Stan połączenia: ${call.peerConnection.iceConnectionState}`);
                 };
-
-                call.on('stream', () => log("Odebrano wideo zwrotne (SUKCES!)", 'relay'));
-                call.on('close', () => log("Połączenie zamknięte"));
-                call.on('error', (e) => log("Błąd Call: " + e, 'error'));
+                
+                call.on('stream', () => log("Odebrano wideo zwrotne!", 'relay'));
             })
             .catch(e => log("Błąd kamery: " + e, 'error'));
         }
