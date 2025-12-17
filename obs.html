@@ -7,15 +7,20 @@
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; font-family: 'Segoe UI', sans-serif; }
         #video-container { width: 100%; height: 100%; transition: all 0.5s ease; position: relative; }
-        .video-box {
-            position: relative; overflow: hidden; border: 2px solid white; box-shadow: 0 0 15px rgba(0,0,0,0.7); background: #000; transition: all 0.5s ease;
-        }
+        .video-box { position: relative; overflow: hidden; border: 2px solid white; box-shadow: 0 0 15px rgba(0,0,0,0.7); background: #000; transition: all 0.5s ease; }
         video { width: 100%; height: 100%; object-fit: cover; display: block; }
+        
+        /* Ikonka wyciszenia w OBS */
+        .mute-icon {
+            position: absolute; top: 10px; right: 10px; color: red; font-size: 24px;
+            background: rgba(0,0,0,0.5); padding: 5px; border-radius: 50%;
+            display: none; z-index: 20;
+        }
+
         .label {
             position: absolute; bottom: 10px; left: 10px; background: rgba(0, 0, 0, 0.7); color: white; padding: 5px 15px; border-radius: 4px; font-size: 1.2rem; font-weight: bold; text-shadow: 1px 1px 2px black; border-left: 4px solid #00d2ff; z-index: 10; display: none;
         }
 
-        /* UKŁADY */
         .layout-grid { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 15px; padding: 20px; box-sizing: border-box; }
         .layout-grid .video-box { width: 45%; height: 45%; } 
         .layout-sidebar-right { display: flex; flex-direction: column; justify-content: center; align-items: flex-end; padding-right: 20px; height: 100vh; }
@@ -31,8 +36,7 @@
         const urlParams = new URLSearchParams(window.location.search);
         const myID = urlParams.get('room') || 'test-room';
         const useStunOnly = urlParams.get('stunonly');
-
-        const fullTurnConfig = [
+        const selectedConfig = useStunOnly ? [ { urls: "stun:stun.l.google.com:19302" } ] : [
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "turn:openrelay.metered.ca:80?transport=udp", username: "openrelayproject", credential: "openrelayproject" },
             { urls: "turn:openrelay.metered.ca:80?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
@@ -40,129 +44,144 @@
             { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
         ];
 
-        const stunOnlyConfig = [ { urls: "stun:stun.l.google.com:19302" } ];
-        const selectedConfig = useStunOnly ? stunOnlyConfig : fullTurnConfig;
-
-        const peer = new Peer(myID, {
-            config: { iceServers: selectedConfig },
-            debug: 1
-        });
-        
+        const peer = new Peer(myID, { config: { iceServers: selectedConfig } });
         const container = document.getElementById('video-container');
-        // Mapa do śledzenia czasu ostatniego sygnału "życia" (heartbeat)
-        const heartbeats = {}; 
+        
+        // Baza danych o gościach i połączeniach
+        // Struktura: { "id_gościa": { name: "Jan", muted: false, conn: DataConnection } }
+        const guests = {}; 
+        let directorConn = null; // Połączenie z Reżyserem
 
         peer.on('open', (id) => console.log('OBS gotowy. ID: ' + id));
 
-        // 1. Odbieranie WIDEO
+        // 1. WIDEO
         peer.on('call', (call) => {
             call.answer();
-            call.on('stream', (remoteStream) => {
-                addVideo(remoteStream, call.peer);
-            });
-
-            // --- METODA 1: Standardowe zamknięcie ---
-            call.on('close', () => removeVideo(call.peer));
-            call.on('error', () => removeVideo(call.peer));
-
-            // --- METODA 2: Monitoring ICE (Działa na nagłe rozłączenia) ---
-            // Zaglądamy "pod maskę" WebRTC
+            call.on('stream', (stream) => addVideo(stream, call.peer));
+            call.on('close', () => removeGuest(call.peer));
+            call.on('error', () => removeGuest(call.peer));
+            
+            // Monitor ICE
             const pc = call.peerConnection;
             pc.oniceconnectionstatechange = () => {
-                const state = pc.iceConnectionState;
-                console.log(`Stan sieci (${call.peer}):`, state);
-                if (state === 'disconnected' || state === 'failed' || state === 'closed') {
-                    console.log("Wykryto awarię połączenia - usuwanie wideo.");
-                    removeVideo(call.peer);
-                }
+                const s = pc.iceConnectionState;
+                if (s === 'disconnected' || s === 'failed' || s === 'closed') removeGuest(call.peer);
             };
         });
 
-        // 2. Odbieranie DANYCH
+        // 2. DANE
         peer.on('connection', (conn) => {
             conn.on('data', (data) => {
-                // Heartbeat - Gość żyje
-                if(data.type === 'heartbeat') {
-                    heartbeats[conn.peer] = Date.now();
+                
+                // A. To REŻYSER?
+                if(data.type === 'director-hello') {
+                    console.log("Reżyser połączony.");
+                    directorConn = conn;
+                    sendGuestListToDirector(); // Wyślij aktualną listę od razu
                 }
 
-                // Layout
                 if(data.type === 'layout') container.className = data.mode;
 
-                // Identify
-                if(data.type === 'identify') updateLabel(conn.peer, data.name);
-
-                // --- METODA 3: Sygnał "Leave" (Szybkie wyjście) ---
-                if(data.type === 'leave') {
-                    console.log("Otrzymano sygnał wyjścia.");
-                    removeVideo(conn.peer);
+                // Reżyser żąda wyciszenia kogoś
+                if(data.type === 'remote-mute') {
+                    const targetId = data.targetId;
+                    if(guests[targetId] && guests[targetId].conn) {
+                        // Przekaż rozkaz do Gościa
+                        guests[targetId].conn.send({ type: 'mute-cmd', state: data.state });
+                    }
                 }
-            });
 
-            conn.on('close', () => removeVideo(conn.peer));
-            conn.on('error', () => removeVideo(conn.peer));
+                // B. To GOŚĆ?
+                // Identyfikacja
+                if(data.type === 'identify') {
+                    // Zapisz dane gościa w bazie
+                    guests[conn.peer] = { 
+                        name: data.name || "Gość", 
+                        muted: false, 
+                        conn: conn 
+                    };
+                    updateLabel(conn.peer, data.name);
+                    sendGuestListToDirector(); // Powiadom reżysera o nowym gościu
+                }
+
+                // Raport o stanie mikrofonu
+                if(data.type === 'mic-status') {
+                    if(guests[conn.peer]) {
+                        guests[conn.peer].muted = data.muted;
+                        // Pokaż/ukryj ikonkę w OBS
+                        toggleMuteIcon(conn.peer, data.muted);
+                        sendGuestListToDirector(); // Zaktualizuj przycisk u reżysera
+                    }
+                }
+
+                if(data.type === 'heartbeat') { /* puls ok */ }
+                if(data.type === 'leave') removeGuest(conn.peer);
+            });
+            
+            conn.on('close', () => removeGuest(conn.peer));
+            conn.on('error', () => removeGuest(conn.peer));
         });
 
-        // --- METODA 4: Strażnik Heartbeat (Sprzątacz) ---
-        // Co 3 sekundy sprawdzamy, czy ktoś nie umarł (brak sygnału przez 7 sekund)
-        setInterval(() => {
-            const now = Date.now();
-            for (const peerId in heartbeats) {
-                if (now - heartbeats[peerId] > 7000) {
-                    console.log(`Brak pulsu od ${peerId} przez 7s - usuwanie.`);
-                    removeVideo(peerId);
-                    delete heartbeats[peerId];
-                }
+        // --- FUNKCJE POMOCNICZE ---
+
+        function sendGuestListToDirector() {
+            if(directorConn && directorConn.open) {
+                // Konwertujemy obiekt guests na prostą listę do wysłania (bez obiektu conn, bo to cykliczne)
+                const safeList = Object.keys(guests).map(id => ({
+                    id: id,
+                    name: guests[id].name,
+                    muted: guests[id].muted
+                }));
+                directorConn.send({ type: 'guest-list', list: safeList });
             }
-        }, 3000);
+        }
+
+        function removeGuest(id) {
+            if(document.getElementById(`box-${id}`)) {
+                document.getElementById(`box-${id}`).remove();
+                delete guests[id]; // Usuń z bazy
+                sendGuestListToDirector(); // Aktualizuj reżysera
+            }
+        }
 
         function addVideo(stream, id) {
             if(document.getElementById(`box-${id}`)) return;
-
-            // Inicjujemy heartbeat
-            heartbeats[id] = Date.now();
-
+            
             const box = document.createElement('div');
             box.className = 'video-box';
             box.id = `box-${id}`;
 
             const video = document.createElement('video');
             video.srcObject = stream;
-            video.muted = true;
-            video.autoplay = true;
-            video.playsInline = true;
+            video.muted = true; video.autoplay = true; video.playsInline = true;
             
             const label = document.createElement('div');
-            label.className = 'label';
-            label.id = `label-${id}`;
+            label.className = 'label'; label.id = `label-${id}`;
+
+            const muteIcon = document.createElement('div');
+            muteIcon.className = 'mute-icon'; muteIcon.innerText = '🔇';
+            muteIcon.id = `mute-${id}`;
 
             box.appendChild(video);
             box.appendChild(label);
+            box.appendChild(muteIcon);
             container.appendChild(box);
 
-            video.onloadedmetadata = () => {
-                video.play().catch(e => console.error("Autoplay:", e));
-            };
+            video.onloadedmetadata = () => video.play().catch(e => console.log(e));
         }
 
         function updateLabel(id, name) {
             const label = document.getElementById(`label-${id}`);
             if(label) {
                 if (name && name.trim() !== "") {
-                    label.innerText = name;
-                    label.style.display = 'block';
-                } else {
-                    label.style.display = 'none';
-                }
+                    label.innerText = name; label.style.display = 'block';
+                } else { label.style.display = 'none'; }
             }
         }
 
-        function removeVideo(id) {
-            const box = document.getElementById(`box-${id}`);
-            if(box) {
-                console.log(`Usuwanie elementu DOM: ${id}`);
-                box.remove();
-            }
+        function toggleMuteIcon(id, isMuted) {
+            const icon = document.getElementById(`mute-${id}`);
+            if(icon) icon.style.display = isMuted ? 'block' : 'none';
         }
     </script>
 </body>

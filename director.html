@@ -6,31 +6,49 @@
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         body { font-family: sans-serif; background: #333; color: white; text-align: center; padding: 20px; }
-        button { padding: 15px 25px; font-size: 18px; margin: 10px; cursor: pointer; border: none; border-radius: 5px; background: #007bff; color: white; transition: 0.2s; width: 80%; max-width: 300px; }
-        button:hover { background: #0056b3; }
+        .container { max-width: 600px; margin: 0 auto; }
+        
+        button { padding: 15px; font-size: 16px; margin: 5px; cursor: pointer; border: none; border-radius: 5px; color: white; transition: 0.2s; }
+        .btn-layout { background: #007bff; width: 30%; }
+        .btn-layout:hover { background: #0056b3; }
+        
         .status { margin-top: 10px; color: #aaa; font-weight: bold;}
         .controls { display: none; margin-top: 30px; border-top: 1px solid #555; padding-top: 20px;}
         input { display: none; }
+
+        /* Lista Gości */
+        #guest-list { margin-top: 20px; text-align: left; background: #222; padding: 20px; border-radius: 10px; }
+        .guest-item { display: flex; justify-content: space-between; align-items: center; background: #444; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
+        .guest-name { font-size: 1.2em; font-weight: bold; }
+        
+        .btn-mic { width: 40px; height: 40px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+        .mic-on { background: #28a745; }
+        .mic-off { background: #dc3545; }
     </style>
 </head>
 <body>
-    <h1>Panel Reżysera</h1>
-    <div class="status" id="status-msg">Inicjalizacja...</div>
-    <input type="text" id="target-id">
+    <div class="container">
+        <h1>Panel Reżysera</h1>
+        <div class="status" id="status-msg">Inicjalizacja...</div>
+        <input type="text" id="target-id">
 
-    <div class="controls" id="control-panel">
-        <h2>Zmień układ:</h2>
-        <button onclick="sendLayout('layout-grid')">🔳 Grid (Siatka)</button><br>
-        <button onclick="sendLayout('layout-sidebar-right')">➡️ Pasek Prawy</button><br>
-        <button onclick="sendLayout('layout-bottom')">⬇️ Pasek Dolny</button>
+        <div class="controls" id="control-panel">
+            <h2>Układ kamer:</h2>
+            <button class="btn-layout" onclick="sendLayout('layout-grid')">🔳 Grid</button>
+            <button class="btn-layout" onclick="sendLayout('layout-sidebar-right')">➡️ Pasek</button>
+            <button class="btn-layout" onclick="sendLayout('layout-bottom')">⬇️ Dół</button>
+            
+            <h2>Zarządzanie Gośćmi:</h2>
+            <div id="guest-list">
+                <p style="text-align:center; color:#777;">Oczekiwanie na gości...</p>
+            </div>
+        </div>
     </div>
 
     <script>
-        // --- LOGIKA SIECIOWA ---
         const urlParams = new URLSearchParams(window.location.search);
         const useStunOnly = urlParams.get('stunonly');
-
-        const fullTurnConfig = [
+        const selectedConfig = useStunOnly ? [ { urls: "stun:stun.l.google.com:19302" } ] : [
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "turn:openrelay.metered.ca:80?transport=udp", username: "openrelayproject", credential: "openrelayproject" },
             { urls: "turn:openrelay.metered.ca:80?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
@@ -38,15 +56,7 @@
             { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
         ];
 
-        const stunOnlyConfig = [ { urls: "stun:stun.l.google.com:19302" } ];
-        const selectedConfig = useStunOnly ? stunOnlyConfig : fullTurnConfig;
-
-        // Reżyser ma losowe ID
-        const peer = new Peer(undefined, {
-            config: { iceServers: selectedConfig },
-            debug: 2
-        });
-        
+        const peer = new Peer(undefined, { config: { iceServers: selectedConfig } });
         let conn = null;
 
         window.onload = function() {
@@ -68,20 +78,57 @@
                 document.getElementById('status-msg').innerText = "✅ POŁĄCZONO Z OBS";
                 document.getElementById('status-msg').style.color = "#00ff00";
                 document.getElementById('control-panel').style.display = "block";
+                
+                // Przedstaw się jako reżyser, żeby OBS wiedział komu słać listę
+                conn.send({ type: 'director-hello' });
             });
 
-            conn.on('error', (err) => {
-                document.getElementById('status-msg').innerText = "Błąd połączenia.";
-                alert("Błąd: " + err);
+            // ODBIERANIE LISTY GOŚCI
+            conn.on('data', (data) => {
+                if(data.type === 'guest-list') {
+                    renderGuestList(data.list);
+                }
             });
+
+            conn.on('error', (err) => alert("Błąd: " + err));
         }
 
         function sendLayout(layoutName) {
+            if(conn && conn.open) conn.send({ type: 'layout', mode: layoutName });
+        }
+
+        function toggleGuestMic(id, currentMutedState) {
             if(conn && conn.open) {
-                conn.send({ type: 'layout', mode: layoutName });
-            } else {
-                alert("Brak połączenia z OBS!");
+                // Wysyłamy żądanie: jeśli jest zmutowany to odmutuj (false), jeśli nie to zmutuj (true)
+                conn.send({ type: 'remote-mute', targetId: id, state: !currentMutedState });
             }
+        }
+
+        function renderGuestList(list) {
+            const container = document.getElementById('guest-list');
+            container.innerHTML = "";
+
+            if(list.length === 0) {
+                container.innerHTML = '<p style="text-align:center; color:#777;">Brak gości online.</p>';
+                return;
+            }
+
+            list.forEach(guest => {
+                const item = document.createElement('div');
+                item.className = 'guest-item';
+                
+                const micClass = guest.muted ? 'mic-off' : 'mic-on';
+                const micIcon = guest.muted ? '🔇' : '🎤';
+                const statusText = guest.muted ? '(Wyciszony)' : '';
+
+                item.innerHTML = `
+                    <span class="guest-name">${guest.name} <small style="font-weight:normal; font-size:0.7em">${statusText}</small></span>
+                    <button class="btn-mic ${micClass}" onclick="toggleGuestMic('${guest.id}', ${guest.muted})">
+                        ${micIcon}
+                    </button>
+                `;
+                container.appendChild(item);
+            });
         }
     </script>
 </body>
