@@ -6,40 +6,13 @@
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; font-family: 'Segoe UI', sans-serif; }
-        
         #video-container { width: 100%; height: 100%; transition: all 0.5s ease; position: relative; }
-        
         .video-box {
-            position: relative;
-            overflow: hidden;
-            border: 2px solid white;
-            box-shadow: 0 0 15px rgba(0,0,0,0.7);
-            background: #000;
-            transition: all 0.5s ease;
+            position: relative; overflow: hidden; border: 2px solid white; box-shadow: 0 0 15px rgba(0,0,0,0.7); background: #000; transition: all 0.5s ease;
         }
-
-        video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-
-        /* Styl podpisu */
+        video { width: 100%; height: 100%; object-fit: cover; display: block; }
         .label {
-            position: absolute;
-            bottom: 10px;
-            left: 10px;
-            background: rgba(0, 0, 0, 0.7);
-            color: white;
-            padding: 5px 15px;
-            border-radius: 4px;
-            font-size: 1.2rem;
-            font-weight: bold;
-            text-shadow: 1px 1px 2px black;
-            border-left: 4px solid #00d2ff;
-            z-index: 10;
-            display: none; /* ZMIANA: Domyślnie ukryte! */
+            position: absolute; bottom: 10px; left: 10px; background: rgba(0, 0, 0, 0.7); color: white; padding: 5px 15px; border-radius: 4px; font-size: 1.2rem; font-weight: bold; text-shadow: 1px 1px 2px black; border-left: 4px solid #00d2ff; z-index: 10; display: none;
         }
 
         /* UKŁADY */
@@ -76,34 +49,78 @@
         });
         
         const container = document.getElementById('video-container');
+        // Mapa do śledzenia czasu ostatniego sygnału "życia" (heartbeat)
+        const heartbeats = {}; 
 
         peer.on('open', (id) => console.log('OBS gotowy. ID: ' + id));
 
+        // 1. Odbieranie WIDEO
         peer.on('call', (call) => {
             call.answer();
             call.on('stream', (remoteStream) => {
                 addVideo(remoteStream, call.peer);
             });
+
+            // --- METODA 1: Standardowe zamknięcie ---
             call.on('close', () => removeVideo(call.peer));
             call.on('error', () => removeVideo(call.peer));
+
+            // --- METODA 2: Monitoring ICE (Działa na nagłe rozłączenia) ---
+            // Zaglądamy "pod maskę" WebRTC
+            const pc = call.peerConnection;
+            pc.oniceconnectionstatechange = () => {
+                const state = pc.iceConnectionState;
+                console.log(`Stan sieci (${call.peer}):`, state);
+                if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+                    console.log("Wykryto awarię połączenia - usuwanie wideo.");
+                    removeVideo(call.peer);
+                }
+            };
         });
 
+        // 2. Odbieranie DANYCH
         peer.on('connection', (conn) => {
             conn.on('data', (data) => {
-                if(data.type === 'layout') {
-                    container.className = data.mode;
+                // Heartbeat - Gość żyje
+                if(data.type === 'heartbeat') {
+                    heartbeats[conn.peer] = Date.now();
                 }
-                if(data.type === 'identify') {
-                    // ZMIANA: Przekazujemy imię tylko jeśli istnieje
-                    updateLabel(conn.peer, data.name);
+
+                // Layout
+                if(data.type === 'layout') container.className = data.mode;
+
+                // Identify
+                if(data.type === 'identify') updateLabel(conn.peer, data.name);
+
+                // --- METODA 3: Sygnał "Leave" (Szybkie wyjście) ---
+                if(data.type === 'leave') {
+                    console.log("Otrzymano sygnał wyjścia.");
+                    removeVideo(conn.peer);
                 }
             });
+
             conn.on('close', () => removeVideo(conn.peer));
             conn.on('error', () => removeVideo(conn.peer));
         });
 
+        // --- METODA 4: Strażnik Heartbeat (Sprzątacz) ---
+        // Co 3 sekundy sprawdzamy, czy ktoś nie umarł (brak sygnału przez 7 sekund)
+        setInterval(() => {
+            const now = Date.now();
+            for (const peerId in heartbeats) {
+                if (now - heartbeats[peerId] > 7000) {
+                    console.log(`Brak pulsu od ${peerId} przez 7s - usuwanie.`);
+                    removeVideo(peerId);
+                    delete heartbeats[peerId];
+                }
+            }
+        }, 3000);
+
         function addVideo(stream, id) {
             if(document.getElementById(`box-${id}`)) return;
+
+            // Inicjujemy heartbeat
+            heartbeats[id] = Date.now();
 
             const box = document.createElement('div');
             box.className = 'video-box';
@@ -118,7 +135,6 @@
             const label = document.createElement('div');
             label.className = 'label';
             label.id = `label-${id}`;
-            // Uwaga: label jest domyślnie ukryty przez CSS (display: none)
 
             box.appendChild(video);
             box.appendChild(label);
@@ -132,7 +148,6 @@
         function updateLabel(id, name) {
             const label = document.getElementById(`label-${id}`);
             if(label) {
-                // ZMIANA: Jeśli imię jest puste -> ukryj, jeśli jest -> pokaż
                 if (name && name.trim() !== "") {
                     label.innerText = name;
                     label.style.display = 'block';
@@ -144,7 +159,10 @@
 
         function removeVideo(id) {
             const box = document.getElementById(`box-${id}`);
-            if(box) box.remove();
+            if(box) {
+                console.log(`Usuwanie elementu DOM: ${id}`);
+                box.remove();
+            }
         }
     </script>
 </body>
