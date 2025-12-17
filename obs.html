@@ -147,14 +147,27 @@
         function addVideo(stream, id) {
             if(document.getElementById(`box-${id}`)) return;
             
+            heartbeats[id] = Date.now();
+
             const box = document.createElement('div');
             box.className = 'video-box';
             box.id = `box-${id}`;
 
+            // --- 1. ELEMENT WIDEO (Tylko obraz) ---
             const video = document.createElement('video');
             video.srcObject = stream;
-            video.muted = true; video.autoplay = true; video.playsInline = true;
+            video.muted = true; // WAŻNE: Wyciszamy wideo, żeby ZAWSZE startowało automatycznie
+            video.autoplay = true;
+            video.playsInline = true;
             
+            // --- 2. ELEMENT AUDIO (Tylko dźwięk) ---
+            const audio = document.createElement('audio');
+            audio.srcObject = stream;
+            audio.muted = false; // To ma grać!
+            audio.autoplay = true;
+            audio.id = `audio-${id}`; // Przydaje się do usuwania
+            
+            // --- 3. UI (Podpisy itp.) ---
             const label = document.createElement('div');
             label.className = 'label'; label.id = `label-${id}`;
 
@@ -162,12 +175,25 @@
             muteIcon.className = 'mute-icon'; muteIcon.innerText = '🔇';
             muteIcon.id = `mute-${id}`;
 
+            // Składamy
             box.appendChild(video);
             box.appendChild(label);
             box.appendChild(muteIcon);
+            
+            // Audio dodajemy do boxa (jest niewidoczne, ale musi być w DOM)
+            box.appendChild(audio);
+            
             container.appendChild(box);
 
-            video.onloadedmetadata = () => video.play().catch(e => console.log(e));
+            // Startujemy
+            video.play().catch(e => console.error("Video autoplay error:", e));
+            
+            // Próbujemy wystartować audio osobno
+            audio.play().catch(e => {
+                console.warn("Audio autoplay zablokowane przez przeglądarkę/OBS.", e);
+                // Tutaj wciąż może być potrzebna interakcja (kliknięcie w OBS), 
+                // ale przynajmniej WIDEO będzie już działać!
+            });
         }
 
         function updateLabel(id, name) {
