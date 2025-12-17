@@ -1,227 +1,387 @@
 <!DOCTYPE html>
 <html lang="pl">
-<head>
-    <meta charset="UTF-8">
+  <head>
+    <meta charset="UTF-8" />
     <title>WIDOK OBS</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; font-family: 'Segoe UI', sans-serif; }
-        
-        #video-container { width: 100%; height: 100%; transition: all 0.5s ease; position: relative; }
-        
-        .video-box { 
-            position: relative; overflow: hidden; border: 2px solid white; 
-            box-shadow: 0 0 15px rgba(0,0,0,0.7); background: #000; transition: all 0.5s ease; 
-        }
-        
-        video { width: 100%; height: 100%; object-fit: cover; display: block; }
-        
-        /* Ikonka wyciszenia w OBS */
-        .mute-icon {
-            position: absolute; top: 10px; right: 10px; color: red; font-size: 24px;
-            background: rgba(0,0,0,0.5); padding: 5px; border-radius: 50%;
-            display: none; z-index: 20;
-        }
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: transparent;
+        font-family: "Segoe UI", sans-serif;
+      }
 
-        /* Podpis (Imię) */
-        .label {
-            position: absolute; bottom: 10px; left: 10px; background: rgba(0, 0, 0, 0.7); 
-            color: white; padding: 5px 15px; border-radius: 4px; font-size: 1.2rem; 
-            font-weight: bold; text-shadow: 1px 1px 2px black; border-left: 4px solid #00d2ff; 
-            z-index: 10; display: none;
-        }
+      #video-container {
+        width: 100%;
+        height: 100%;
+        transition: all 0.5s ease;
+        position: relative;
+      }
 
-        /* UKŁADY KAMER */
-        .layout-grid { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 15px; padding: 20px; box-sizing: border-box; }
-        .layout-grid .video-box { width: 45%; height: 45%; } 
-        .layout-sidebar-right { display: flex; flex-direction: column; justify-content: center; align-items: flex-end; padding-right: 20px; height: 100vh; }
-        .layout-sidebar-right .video-box { width: 320px; height: 180px; margin-bottom: 15px; }
-        .layout-bottom { display: flex; flex-direction: row; justify-content: center; align-items: flex-end; padding-bottom: 20px; height: 100vh; }
-        .layout-bottom .video-box { width: 280px; height: 157px; margin: 0 10px; }
+      .video-box {
+        position: relative;
+        overflow: hidden;
+        border: 2px solid white;
+        box-shadow: 0 0 15px rgba(0, 0, 0, 0.7);
+        background: #000;
+        transition: all 0.5s ease;
+      }
+
+      video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+
+      /* Ikonki i Podpisy */
+      .mute-icon {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        color: red;
+        font-size: 24px;
+        background: rgba(0, 0, 0, 0.5);
+        padding: 5px;
+        border-radius: 50%;
+        display: none;
+        z-index: 20;
+      }
+      .label {
+        position: absolute;
+        bottom: 10px;
+        left: 10px;
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 5px 15px;
+        border-radius: 4px;
+        font-size: 1.2rem;
+        font-weight: bold;
+        text-shadow: 1px 1px 2px black;
+        border-left: 4px solid #00d2ff;
+        z-index: 10;
+        display: none;
+      }
+
+      /* --- UKŁADY KAMER --- */
+
+      /* 1. Grid (Siatka na środku) */
+      .layout-grid {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        gap: 15px;
+        padding: 20px;
+        box-sizing: border-box;
+      }
+      .layout-grid .video-box {
+        width: 45%;
+        height: 45%;
+      }
+
+      /* 2. Pasek Prawy */
+      .layout-sidebar-right {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-end;
+        padding-right: 20px;
+        height: 100vh;
+      }
+      .layout-sidebar-right .video-box {
+        width: 320px;
+        height: 180px;
+        margin-bottom: 15px;
+      }
+
+      /* 3. Pasek Lewy (NOWY) */
+      .layout-sidebar-left {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-start;
+        padding-left: 20px;
+        height: 100vh;
+      }
+      .layout-sidebar-left .video-box {
+        width: 320px;
+        height: 180px;
+        margin-bottom: 15px;
+      }
+
+      /* 4. Pasek Dolny */
+      .layout-bottom {
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        align-items: flex-end;
+        padding-bottom: 20px;
+        height: 100vh;
+      }
+      .layout-bottom .video-box {
+        width: 280px;
+        height: 157px;
+        margin: 0 10px;
+      }
+
+      /* 5. Pasek Górny (NOWY) */
+      .layout-top {
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        align-items: flex-start;
+        padding-top: 20px;
+        height: 100vh;
+      }
+      .layout-top .video-box {
+        width: 280px;
+        height: 157px;
+        margin: 0 10px;
+      }
+
+      /* 6. Split / Obie strony (NOWY) */
+      /* Rozrzuca kamery po lewej i prawej, zostawiając środek pusty */
+      .layout-split {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: space-between; /* Kluczowe: rozpycha na boki */
+        align-content: center; /* Centruje w pionie całość */
+        padding: 20px 40px; /* Odstęp od krawędzi ekranu */
+        height: 100vh;
+      }
+      .layout-split .video-box {
+        width: 300px;
+        height: 169px;
+        margin-bottom: 30px;
+        /* Marginesy, żeby nie przyklejały się do siebie w pionie */
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <div id="video-container" class="layout-grid"></div>
 
     <script>
-        const urlParams = new URLSearchParams(window.location.search);
-        const myID = urlParams.get('room') || 'test-room';
-        const useStunOnly = urlParams.get('stunonly');
+      const urlParams = new URLSearchParams(window.location.search);
+      const myID = urlParams.get("room") || "test-room";
+      const useStunOnly = urlParams.get("stunonly");
 
-        // Konfiguracja serwerów (dla obsługi LTE/4G)
-        const selectedConfig = useStunOnly ? [ { urls: "stun:stun.l.google.com:19302" } ] : [
+      // Konfiguracja serwerów (dla obsługi LTE/4G)
+      const selectedConfig = useStunOnly
+        ? [{ urls: "stun:stun.l.google.com:19302" }]
+        : [
             { urls: "stun:stun.l.google.com:19302" },
-            { urls: "turn:openrelay.metered.ca:80?transport=udp", username: "openrelayproject", credential: "openrelayproject" },
-            { urls: "turn:openrelay.metered.ca:80?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
-            { urls: "turn:openrelay.metered.ca:443?transport=udp", username: "openrelayproject", credential: "openrelayproject" },
-            { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
-        ];
+            {
+              urls: "turn:openrelay.metered.ca:80?transport=udp",
+              username: "openrelayproject",
+              credential: "openrelayproject",
+            },
+            {
+              urls: "turn:openrelay.metered.ca:80?transport=tcp",
+              username: "openrelayproject",
+              credential: "openrelayproject",
+            },
+            {
+              urls: "turn:openrelay.metered.ca:443?transport=udp",
+              username: "openrelayproject",
+              credential: "openrelayproject",
+            },
+            {
+              urls: "turn:openrelay.metered.ca:443?transport=tcp",
+              username: "openrelayproject",
+              credential: "openrelayproject",
+            },
+          ];
 
-        const peer = new Peer(myID, { config: { iceServers: selectedConfig } });
-        const container = document.getElementById('video-container');
-        
-        // --- ZMIENNE GLOBALNE (To naprawia Twój błąd!) ---
-        const guests = {};       // Lista gości dla Reżysera
-        const heartbeats = {};   // Czas ostatniego sygnału życia
-        let directorConn = null; // Połączenie z Reżyserem
+      const peer = new Peer(myID, { config: { iceServers: selectedConfig } });
+      const container = document.getElementById("video-container");
 
-        peer.on('open', (id) => console.log('OBS gotowy. ID: ' + id));
+      // --- ZMIENNE GLOBALNE (To naprawia Twój błąd!) ---
+      const guests = {}; // Lista gości dla Reżysera
+      const heartbeats = {}; // Czas ostatniego sygnału życia
+      let directorConn = null; // Połączenie z Reżyserem
 
-        // --- 1. ODBIÓR WIDEO ---
-        peer.on('call', (call) => {
-            call.answer();
-            call.on('stream', (stream) => addVideo(stream, call.peer));
-            
-            // Obsługa rozłączeń
-            call.on('close', () => removeGuest(call.peer));
-            call.on('error', () => removeGuest(call.peer));
-            
-            // Monitorowanie stanu sieci (szybkie wykrywanie awarii)
-            const pc = call.peerConnection;
-            pc.oniceconnectionstatechange = () => {
-                const s = pc.iceConnectionState;
-                if (s === 'disconnected' || s === 'failed' || s === 'closed') removeGuest(call.peer);
+      peer.on("open", (id) => console.log("OBS gotowy. ID: " + id));
+
+      // --- 1. ODBIÓR WIDEO ---
+      peer.on("call", (call) => {
+        call.answer();
+        call.on("stream", (stream) => addVideo(stream, call.peer));
+
+        // Obsługa rozłączeń
+        call.on("close", () => removeGuest(call.peer));
+        call.on("error", () => removeGuest(call.peer));
+
+        // Monitorowanie stanu sieci (szybkie wykrywanie awarii)
+        const pc = call.peerConnection;
+        pc.oniceconnectionstatechange = () => {
+          const s = pc.iceConnectionState;
+          if (s === "disconnected" || s === "failed" || s === "closed")
+            removeGuest(call.peer);
+        };
+      });
+
+      // --- 2. ODBIÓR DANYCH (Sterowanie) ---
+      peer.on("connection", (conn) => {
+        conn.on("data", (data) => {
+          // Reżyser się wita
+          if (data.type === "director-hello") {
+            console.log("Reżyser połączony.");
+            directorConn = conn;
+            sendGuestListToDirector();
+          }
+
+          // Zmiana układu
+          if (data.type === "layout") container.className = data.mode;
+
+          // Reżyser wycisza kogoś
+          if (data.type === "remote-mute") {
+            if (guests[data.targetId] && guests[data.targetId].conn) {
+              guests[data.targetId].conn.send({
+                type: "mute-cmd",
+                state: data.state,
+              });
+            }
+          }
+
+          // Dane od Gościa
+          if (data.type === "identify") {
+            guests[conn.peer] = {
+              name: data.name || "Gość",
+              muted: false,
+              conn: conn,
             };
+            updateLabel(conn.peer, data.name);
+            sendGuestListToDirector();
+          }
+
+          if (data.type === "mic-status") {
+            if (guests[conn.peer]) {
+              guests[conn.peer].muted = data.muted;
+              toggleMuteIcon(conn.peer, data.muted);
+              sendGuestListToDirector();
+            }
+          }
+
+          // Heartbeat i Wyjście
+          if (data.type === "heartbeat") heartbeats[conn.peer] = Date.now();
+          if (data.type === "leave") removeGuest(conn.peer);
         });
 
-        // --- 2. ODBIÓR DANYCH (Sterowanie) ---
-        peer.on('connection', (conn) => {
-            conn.on('data', (data) => {
-                
-                // Reżyser się wita
-                if(data.type === 'director-hello') {
-                    console.log("Reżyser połączony.");
-                    directorConn = conn;
-                    sendGuestListToDirector();
-                }
+        conn.on("close", () => removeGuest(conn.peer));
+        conn.on("error", () => removeGuest(conn.peer));
+      });
 
-                // Zmiana układu
-                if(data.type === 'layout') container.className = data.mode;
-
-                // Reżyser wycisza kogoś
-                if(data.type === 'remote-mute') {
-                    if(guests[data.targetId] && guests[data.targetId].conn) {
-                        guests[data.targetId].conn.send({ type: 'mute-cmd', state: data.state });
-                    }
-                }
-
-                // Dane od Gościa
-                if(data.type === 'identify') {
-                    guests[conn.peer] = { name: data.name || "Gość", muted: false, conn: conn };
-                    updateLabel(conn.peer, data.name);
-                    sendGuestListToDirector();
-                }
-
-                if(data.type === 'mic-status') {
-                    if(guests[conn.peer]) {
-                        guests[conn.peer].muted = data.muted;
-                        toggleMuteIcon(conn.peer, data.muted);
-                        sendGuestListToDirector();
-                    }
-                }
-
-                // Heartbeat i Wyjście
-                if(data.type === 'heartbeat') heartbeats[conn.peer] = Date.now();
-                if(data.type === 'leave') removeGuest(conn.peer);
-            });
-            
-            conn.on('close', () => removeGuest(conn.peer));
-            conn.on('error', () => removeGuest(conn.peer));
-        });
-
-        // --- 3. MECHANIZM HEARTBEAT (Usuwanie duchów) ---
-        setInterval(() => {
-            const now = Date.now();
-            for (const peerId in heartbeats) {
-                // Jeśli brak sygnału przez 7 sekund, usuń
-                if (now - heartbeats[peerId] > 7000) {
-                    console.log(`Brak pulsu od ${peerId} - usuwanie.`);
-                    removeGuest(peerId);
-                }
-            }
-        }, 3000);
-
-
-        // --- FUNKCJE POMOCNICZE ---
-
-        function addVideo(stream, id) {
-            // Zapobiegaj duplikatom
-            if(document.getElementById(`box-${id}`)) return;
-            
-            console.log(`Dodaję wideo dla ID: ${id}`);
-            heartbeats[id] = Date.now(); // Inicjalizacja pulsu
-
-            const box = document.createElement('div');
-            box.className = 'video-box';
-            box.id = `box-${id}`;
-
-            // 1. Element WIDEO (Wyciszony - dla obrazu)
-            const video = document.createElement('video');
-            video.srcObject = stream;
-            video.muted = true;       // KLUCZOWE: Muted, żeby wideo zawsze startowało
-            video.autoplay = true;
-            video.playsInline = true;
-            
-            // 2. Element AUDIO (Osobny - dla dźwięku)
-            const audio = document.createElement('audio');
-            audio.srcObject = stream;
-            audio.muted = false;      // To ma grać!
-            audio.autoplay = true;
-            audio.id = `audio-${id}`;
-
-            // UI
-            const label = document.createElement('div');
-            label.className = 'label'; label.id = `label-${id}`;
-
-            const muteIcon = document.createElement('div');
-            muteIcon.className = 'mute-icon'; muteIcon.innerText = '🔇';
-            muteIcon.id = `mute-${id}`;
-
-            box.appendChild(video);
-            box.appendChild(label);
-            box.appendChild(muteIcon);
-            box.appendChild(audio); // Audio jest w DOM, ale niewidoczne
-            
-            container.appendChild(box);
-
-            // Start
-            video.play().catch(e => console.error("Wideo Autoplay error:", e));
-            audio.play().catch(e => console.warn("Audio Autoplay zablokowane - wymagana interakcja w OBS!", e));
+      // --- 3. MECHANIZM HEARTBEAT (Usuwanie duchów) ---
+      setInterval(() => {
+        const now = Date.now();
+        for (const peerId in heartbeats) {
+          // Jeśli brak sygnału przez 7 sekund, usuń
+          if (now - heartbeats[peerId] > 7000) {
+            console.log(`Brak pulsu od ${peerId} - usuwanie.`);
+            removeGuest(peerId);
+          }
         }
+      }, 3000);
 
-        function removeGuest(id) {
-            if(document.getElementById(`box-${id}`)) {
-                document.getElementById(`box-${id}`).remove();
-                delete guests[id];
-                delete heartbeats[id];
-                sendGuestListToDirector();
-            }
-        }
+      // --- FUNKCJE POMOCNICZE ---
 
-        function updateLabel(id, name) {
-            const label = document.getElementById(`label-${id}`);
-            if(label) {
-                if (name && name.trim() !== "") {
-                    label.innerText = name; label.style.display = 'block';
-                } else { label.style.display = 'none'; }
-            }
-        }
+      function addVideo(stream, id) {
+        // Zapobiegaj duplikatom
+        if (document.getElementById(`box-${id}`)) return;
 
-        function toggleMuteIcon(id, isMuted) {
-            const icon = document.getElementById(`mute-${id}`);
-            if(icon) icon.style.display = isMuted ? 'block' : 'none';
-        }
+        console.log(`Dodaję wideo dla ID: ${id}`);
+        heartbeats[id] = Date.now(); // Inicjalizacja pulsu
 
-        function sendGuestListToDirector() {
-            if(directorConn && directorConn.open) {
-                const safeList = Object.keys(guests).map(id => ({
-                    id: id,
-                    name: guests[id].name,
-                    muted: guests[id].muted
-                }));
-                directorConn.send({ type: 'guest-list', list: safeList });
-            }
+        const box = document.createElement("div");
+        box.className = "video-box";
+        box.id = `box-${id}`;
+
+        // 1. Element WIDEO (Wyciszony - dla obrazu)
+        const video = document.createElement("video");
+        video.srcObject = stream;
+        video.muted = true; // KLUCZOWE: Muted, żeby wideo zawsze startowało
+        video.autoplay = true;
+        video.playsInline = true;
+
+        // 2. Element AUDIO (Osobny - dla dźwięku)
+        const audio = document.createElement("audio");
+        audio.srcObject = stream;
+        audio.muted = false; // To ma grać!
+        audio.autoplay = true;
+        audio.id = `audio-${id}`;
+
+        // UI
+        const label = document.createElement("div");
+        label.className = "label";
+        label.id = `label-${id}`;
+
+        const muteIcon = document.createElement("div");
+        muteIcon.className = "mute-icon";
+        muteIcon.innerText = "🔇";
+        muteIcon.id = `mute-${id}`;
+
+        box.appendChild(video);
+        box.appendChild(label);
+        box.appendChild(muteIcon);
+        box.appendChild(audio); // Audio jest w DOM, ale niewidoczne
+
+        container.appendChild(box);
+
+        // Start
+        video.play().catch((e) => console.error("Wideo Autoplay error:", e));
+        audio
+          .play()
+          .catch((e) =>
+            console.warn(
+              "Audio Autoplay zablokowane - wymagana interakcja w OBS!",
+              e
+            )
+          );
+      }
+
+      function removeGuest(id) {
+        if (document.getElementById(`box-${id}`)) {
+          document.getElementById(`box-${id}`).remove();
+          delete guests[id];
+          delete heartbeats[id];
+          sendGuestListToDirector();
         }
+      }
+
+      function updateLabel(id, name) {
+        const label = document.getElementById(`label-${id}`);
+        if (label) {
+          if (name && name.trim() !== "") {
+            label.innerText = name;
+            label.style.display = "block";
+          } else {
+            label.style.display = "none";
+          }
+        }
+      }
+
+      function toggleMuteIcon(id, isMuted) {
+        const icon = document.getElementById(`mute-${id}`);
+        if (icon) icon.style.display = isMuted ? "block" : "none";
+      }
+
+      function sendGuestListToDirector() {
+        if (directorConn && directorConn.open) {
+          const safeList = Object.keys(guests).map((id) => ({
+            id: id,
+            name: guests[id].name,
+            muted: guests[id].muted,
+          }));
+          directorConn.send({ type: "guest-list", list: safeList });
+        }
+      }
     </script>
-</body>
+  </body>
 </html>
