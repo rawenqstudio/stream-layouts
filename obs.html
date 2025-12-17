@@ -2,133 +2,112 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>WIDOK OBS (DEBUG)</title>
+    <title>OBS Renderer</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; color: white; font-family: monospace; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
         
-        #video-container { width: 100%; height: 100%; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; }
+        /* Główny kontener */
+        #video-container { width: 100%; height: 100%; transition: all 0.5s ease; position: relative; }
         
+        /* Styl okienka wideo */
         video { 
             object-fit: cover; 
-            border: 2px solid red; /* Czerwona ramka = wideo jest w DOM */
+            border: 2px solid rgba(255,255,255,0.2); 
+            box-shadow: 0 0 15px rgba(0,0,0,0.5); 
+            transition: all 0.5s ease; 
             background: #000; 
-            max-width: 45%; max-height: 45%;
         }
 
-        /* Panel diagnostyczny na górze */
-        #debug-panel {
-            position: absolute; top: 0; left: 0; width: 100%; background: rgba(0,0,0,0.8); z-index: 9999; padding: 10px; font-size: 12px; pointer-events: none;
-        }
-        #force-play-btn {
-            position: absolute; bottom: 20px; right: 20px; z-index: 9999; padding: 20px; background: red; color: white; border: none; font-size: 20px; cursor: pointer;
-        }
+        /* --- UKŁADY KAMER --- */
+
+        /* 1. Grid (Siatka - Domyślny) */
+        .layout-grid { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; padding: 20px; box-sizing: border-box; }
+        .layout-grid video { width: 45%; height: 45%; max-width: 600px; }
+
+        /* 2. Sidebar Right (Pasek po prawej) */
+        .layout-sidebar-right { display: flex; flex-direction: column; justify-content: center; align-items: flex-end; padding-right: 20px; height: 100vh; }
+        .layout-sidebar-right video { width: 300px; height: 169px; margin-bottom: 10px; }
+
+        /* 3. Bottom Row (Pasek na dole) */
+        .layout-bottom { display: flex; flex-direction: row; justify-content: center; align-items: flex-end; padding-bottom: 20px; height: 100vh; }
+        .layout-bottom video { width: 250px; height: 140px; margin: 0 10px; }
+
+        /* 4. Spotlight (Jeden duży na środku) */
+        .layout-spotlight { display: flex; justify-content: center; align-items: center; height: 100vh; padding: 0; }
+        .layout-spotlight video { width: 100%; height: 100%; border: none; }
+
     </style>
 </head>
 <body>
-
-    <div id="debug-panel">Czekam na połączenie... (Wersja Debug v2)</div>
-    <button id="force-play-btn" onclick="forcePlay()">⚠️ KLIKNIJ TU JEŚLI CZARNO</button>
-
-    <div id="video-container"></div>
+    <div id="video-container" class="layout-grid"></div>
 
     <script>
-        function log(msg) {
-            document.getElementById('debug-panel').innerText = msg;
-            console.log(msg);
-        }
-
         const urlParams = new URLSearchParams(window.location.search);
-        const myID = urlParams.get('room') || 'test-room';
+        const myID = urlParams.get('room');
         const container = document.getElementById('video-container');
 
-        // KONFIGURACJA TURN (Open Relay)
-        // WAŻNE: Podmień te wartości na swoje z Metered.ca
-        const METERED_USER = "6d29fb99ae677ec0acd6e982";
-        const METERED_PASS = "6MZCO1eecPhRF7yT";
+        if(!myID) alert("BŁĄD: Brak parametru ?room= w linku!");
 
-        const turnConfig = [
-            { urls: "stun:stun.l.google.com:19302" }, // Zawsze warto mieć Google STUN jako backup
-            { 
-                urls: "turn:global.turn.metered.ca:80",
-                username: METERED_USER,
-                credential: METERED_PASS
+        // --- KONFIGURACJA DARMOWA (Google + OpenRelay) ---
+        const freeIceConfig = [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+            {
+                urls: "turn:openrelay.metered.ca:443?transport=tcp",
+                username: "openrelayproject",
+                credential: "openrelayproject"
             },
-            { 
-                urls: "turn:global.turn.metered.ca:443",
-                username: METERED_USER,
-                credential: METERED_PASS
-            },
-            { 
-                urls: "turn:global.turn.metered.ca:443?transport=tcp",
-                username: METERED_USER,
-                credential: METERED_PASS
+            {
+                urls: "turn:openrelay.metered.ca:80",
+                username: "openrelayproject",
+                credential: "openrelayproject"
             }
         ];
 
-        const peer = new Peer(myID, { config: { iceServers: turnConfig }, debug: 2 });
-
-        peer.on('open', (id) => {
-            log(`OBS Gotowy. ID: ${id}. Czekam na gości...`);
+        const peer = new Peer(myID, { 
+            config: { iceServers: freeIceConfig, iceTransportPolicy: 'all' },
+            debug: 1
         });
 
-        peer.on('error', (err) => {
-            log(`Błąd PeerJS: ${err.type}`);
-        });
+        peer.on('open', (id) => console.log('OBS Gotowy. ID Pokoju: ' + id));
 
+        // 1. Odbieranie wideo (Od Gości)
         peer.on('call', (call) => {
-            log("Ktoś dzwoni! Odbieram...");
-            call.answer(); 
-            
+            call.answer(); // Odbierz bez wysyłania zwrotnego wideo
             call.on('stream', (remoteStream) => {
-                log("Otrzymano strumień (Stream)! Przetwarzanie...");
                 addVideo(remoteStream, call.peer);
             });
-
-            call.on('error', (err) => log("Błąd połączenia: " + err));
         });
 
-        // Obsługa danych (układów)
+        // 2. Odbieranie komend (Od Reżysera)
         peer.on('connection', (conn) => {
             conn.on('data', (data) => {
-                if(data.type === 'layout') container.className = data.mode;
+                if(data.type === 'layout') {
+                    console.log("Zmiana układu na:", data.mode);
+                    container.className = data.mode;
+                }
             });
         });
 
         function addVideo(stream, id) {
             if(document.getElementById(`vid-${id}`)) return;
 
-            log(`Dodaję element VIDEO dla ID: ${id}`);
-
             const video = document.createElement('video');
             video.srcObject = stream;
             video.id = `vid-${id}`;
-            video.muted = true;  // WAŻNE
+            
+            // KLUCZOWE DLA OBS I AUTOPLAY:
+            video.muted = true; 
             video.autoplay = true;
             video.playsInline = true;
 
-            // Zdarzenia diagnostyczne wideo
+            // Wymuszenie startu (fix dla niektórych przeglądarek)
             video.onloadedmetadata = () => {
-                log(`Metadane wideo załadowane. Rozdzielczość: ${video.videoWidth}x${video.videoHeight}`);
-                video.play().catch(e => log("Autoplay zablokowany: " + e));
-            };
-            
-            video.onresize = () => {
-                log(`Zmiana rozdzielczości: ${video.videoWidth}x${video.videoHeight}`);
+                video.play().catch(e => console.error("Autoplay blocked:", e));
             };
 
             container.appendChild(video);
-        }
-
-        // Funkcja ratunkowa
-        window.forcePlay = function() {
-            const videos = document.querySelectorAll('video');
-            videos.forEach(v => {
-                v.muted = true;
-                v.play()
-                .then(() => log("Wymuszono start wideo!"))
-                .catch(e => log("Błąd wymuszenia: " + e));
-            });
         }
     </script>
 </body>

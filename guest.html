@@ -2,118 +2,91 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>GOŚĆ (FINAL TEST)</title>
+    <title>Kamera Gościa</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body { font-family: monospace; background: #000; color: #0f0; padding: 10px; font-size: 11px; }
-        video { width: 100%; border: 2px solid #555; margin-bottom: 10px; background: #222; }
-        #logs { border-top: 1px solid #555; padding-top: 10px; white-space: pre-wrap; word-break: break-all; }
-        .relay { color: #ffff00; font-weight: bold; background: #330; padding: 2px; } 
-        .error { color: #ff5555; font-weight: bold; }
-        button { padding: 20px; width: 100%; font-size: 18px; font-weight: bold; background: #004400; color: white; border: none; margin-bottom: 10px; }
-        input { width: 100%; padding: 10px; margin-bottom: 10px; color: black;}
+        body { font-family: sans-serif; text-align: center; background: #111; color: white; padding: 20px; }
+        .container { max-width: 500px; margin: 0 auto; }
+        video { width: 100%; border-radius: 10px; background: #000; border: 2px solid #333; margin: 20px 0; }
+        button { background: #00d2ff; color: #000; border: none; padding: 15px 30px; font-size: 1.2em; border-radius: 30px; cursor: pointer; font-weight: bold; width: 100%; }
+        button:disabled { background: #555; color: #888; cursor: not-allowed; }
+        .status { margin-top: 10px; color: #aaa; font-size: 0.9em; }
     </style>
 </head>
 <body>
-    <h3>TEST LTE (WYMUSZENIE TCP)</h3>
-    <video id="localVideo" autoplay muted playsinline></video>
-    
-    <input type="text" id="target-id" placeholder="ID Pokoju">
-    <button onclick="startCall()">POŁĄCZ</button>
-    
-    <div id="logs">Czekam...</div>
+    <div class="container">
+        <h2>🎥 Twoja Kamera</h2>
+        <video id="localVideo" autoplay muted playsinline></video>
+        <button id="join-btn" onclick="startStream()">DOŁĄCZ DO STUDIA</button>
+        <div id="status" class="status">Gotowy. Kliknij przycisk powyżej.</div>
+    </div>
 
     <script>
-        function log(msg, type='') {
-            const logs = document.getElementById('logs');
-            const div = document.createElement('div');
-            
-            if(msg.includes('relay')) { 
-                type = 'relay'; 
-                msg = ">>> SUKCES! MAMY TURN (RELAY): " + msg;
-            }
-            if(type) div.className = type;
-            
-            div.innerText = `${new Date().toLocaleTimeString()} - ${msg}`;
-            logs.prepend(div);
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomID = urlParams.get('room');
+        const statusDiv = document.getElementById('status');
+        const btn = document.getElementById('join-btn');
+
+        if(!roomID) {
+            statusDiv.innerText = "BŁĄD: Nieprawidłowy link (brak ID pokoju).";
+            btn.disabled = true;
         }
 
-        // --- KONFIGURACJA NA SZTYWNO (WPISZ DANE PONIŻEJ) ---
-        // Upewnij się, że username i credential są w cudzysłowach!
-        
-        const iceServersConfig = [
-            // 1. Najpierw próbujemy TCP (największa szansa na LTE)
-            { 
-                urls: "turn:global.turn.metered.ca:443?transport=tcp",
-                username: "6d29fb99ae677ec0acd6e982",
-                credential: "6MZCO1eecPhRF7yT"
+        // --- TA SAMA KONFIGURACJA CO W OBS ---
+        const freeIceConfig = [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+            {
+                urls: "turn:openrelay.metered.ca:443?transport=tcp",
+                username: "openrelayproject",
+                credential: "openrelayproject"
             },
-            // 2. Potem zwykły UDP na porcie 80 (omijanie firewalli)
-            { 
-                urls: "turn:global.turn.metered.ca:80",
-                username: "6d29fb99ae677ec0acd6e982",
-                credential: "6MZCO1eecPhRF7yT"
-            },
-            // 3. Standardowy UDP
-            { 
-                urls: "turn:global.turn.metered.ca:443",
-                username: "6d29fb99ae677ec0acd6e982",
-                credential: "6MZCO1eecPhRF7yT"
-            },
-            // 4. STUN Google jako backup
-            { urls: "stun:stun.l.google.com:19302" }
+            {
+                urls: "turn:openrelay.metered.ca:80",
+                username: "openrelayproject",
+                credential: "openrelayproject"
+            }
         ];
 
-        // Wyświetl konfigurację w logach, żeby sprawdzić czy nie jest pusta
-        console.log("Moja konfiguracja ICE:", iceServersConfig);
-
         const peer = new Peer({ 
-            config: { 
-                iceServers: iceServersConfig,
-                iceTransportPolicy: 'relay' // Opcjonalnie: wymuś TYLKO relay do testów (ryzykowne, ale pewne)
-            }, 
-            debug: 3 
+            config: { iceServers: freeIceConfig, iceTransportPolicy: 'all' } 
         });
 
-        peer.on('open', (id) => {
-            log(`Moje ID: ${id}`);
-            const urlParams = new URLSearchParams(window.location.search);
-            if(urlParams.get('room')) document.getElementById('target-id').value = urlParams.get('room');
-        });
+        function startStream() {
+            btn.disabled = true;
+            statusDiv.innerText = "Proszę o dostęp do kamery...";
 
-        peer.on('error', (err) => log("BŁĄD PEER: " + err.type + " - " + err.message, 'error'));
-
-        function startCall() {
-            const targetId = document.getElementById('target-id').value;
-            if(!targetId) return alert("Brak ID!");
-
-            log("Start kamery...");
-            navigator.mediaDevices.getUserMedia({video: true, audio: true})
-            .then(stream => {
+            navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+            .then((stream) => {
                 document.getElementById('localVideo').srcObject = stream;
-                log("Kamera OK. Szukam drogi (Gathering)...");
+                statusDiv.innerText = "Kamera OK. Łączenie z OBS...";
 
-                const call = peer.call(targetId, stream);
+                const call = peer.call(roomID, stream);
 
-                call.peerConnection.onicecandidate = (event) => {
-                    if (event.candidate) {
-                        const c = event.candidate;
-                        // Logujemy typ kandydata
-                        let typeInfo = c.type;
-                        if(typeInfo === 'relay') typeInfo = 'RELAY (TURN) !!!';
-                        log(`Znalazłem drogę: ${typeInfo} (${c.protocol})`);
-                    } else {
-                        log("Koniec szukania dróg.");
-                    }
-                };
-
-                call.peerConnection.oniceconnectionstatechange = () => {
-                    log(`Stan połączenia: ${call.peerConnection.iceConnectionState}`);
-                };
+                call.on('close', () => {
+                    statusDiv.innerText = "Połączenie zakończone.";
+                    btn.disabled = false;
+                });
                 
-                call.on('stream', () => log("Odebrano wideo zwrotne!", 'relay'));
+                call.on('error', (err) => {
+                    statusDiv.innerText = "Błąd połączenia: " + err;
+                    btn.disabled = false;
+                });
+                
+                // Monitorujemy, czy połączenie się udało (PeerJS internal)
+                setTimeout(() => {
+                    if(call.peerConnection.iceConnectionState === 'connected' || call.peerConnection.iceConnectionState === 'completed') {
+                         statusDiv.innerText = "✅ JESTEŚ NA ŻYWO (Połączono)";
+                         statusDiv.style.color = "#00ff00";
+                    }
+                }, 3000); // Sprawdź po 3 sekundach
             })
-            .catch(e => log("Błąd kamery: " + e, 'error'));
+            .catch((err) => {
+                console.error(err);
+                statusDiv.innerText = "Błąd kamery: " + err.message;
+                btn.disabled = false;
+            });
         }
     </script>
 </body>

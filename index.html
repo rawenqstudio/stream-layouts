@@ -2,7 +2,7 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>StreamLayouts - Generator Pokoi</title>
+    <title>Stream Layouts - Generator</title>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: white; text-align: center; padding-top: 50px; }
         .container { max-width: 600px; margin: 0 auto; background: #2a2a2a; padding: 40px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
@@ -14,34 +14,33 @@
         .link-group { margin-bottom: 20px; background: #333; padding: 15px; border-radius: 8px; }
         .link-group label { display: block; color: #aaa; font-size: 0.9em; margin-bottom: 5px; }
         .link-group input { width: 95%; padding: 10px; background: #111; border: 1px solid #444; color: #fff; border-radius: 5px; }
-        .copy-btn { margin-top: 5px; font-size: 0.8em; padding: 5px 10px; background: #555; }
+        .copy-btn { margin-top: 5px; font-size: 0.8em; padding: 5px 10px; background: #555; border: none; color: white; cursor: pointer; border-radius: 4px;}
+        .copy-btn:hover { background: #777; }
     </style>
 </head>
 <body>
 
     <div class="container">
         <h1>🎥 Stream Layout Generator</h1>
-        <p>Stwórz pokój, wyślij linki gościom i steruj układem kamer w OBS na żywo.</p>
+        <p>Stwórz pokój, wyślij linki gościom i steruj układem kamer w OBS.</p>
         
         <button onclick="createRoom()">+ Stwórz Nowy Pokój</button>
 
         <div id="links-area">
-            <h3>Twoje linki:</h3>
-
             <div class="link-group">
-                <label>1. Link do OBS (Browser Source):</label>
+                <label>1. Link do OBS (Wklej jako Browser Source):</label>
                 <input type="text" id="obs-link" readonly>
                 <button class="copy-btn" onclick="copy('obs-link')">Kopiuj</button>
             </div>
 
             <div class="link-group">
-                <label>2. Panel Reżysera (Sterowanie):</label>
+                <label>2. Panel Reżysera (Otwórz na telefonie/laptopie):</label>
                 <input type="text" id="director-link" readonly>
                 <button class="copy-btn" onclick="copy('director-link')">Kopiuj</button>
             </div>
 
             <div class="link-group">
-                <label>3. Link dla Gości (Wyślij to):</label>
+                <label>3. Link dla Gości (Wyślij znajomym):</label>
                 <input type="text" id="guest-link" readonly>
                 <button class="copy-btn" onclick="copy('guest-link')">Kopiuj</button>
             </div>
@@ -50,24 +49,19 @@
 
     <script>
         function createRoom() {
-            // Generujemy losowe ID pokoju (prosty ciąg znaków)
-            const roomId = Math.random().toString(36).substring(2, 9); // np. "k4j9s2d"
+            // Generujemy losowe ID pokoju
+            const roomId = Math.random().toString(36).substring(2, 9);
             
-            // Pobieramy obecny adres strony (np. http://localhost:5500/)
-            // Usuwamy "index.html" z końca, jeśli tam jest
-            const baseUrl = window.location.href.replace('index.html', '');
+            // Budujemy linki
+            const baseUrl = window.location.href.replace('index.html', ''); // Usuwa nazwę pliku, zostawia folder
+            
+            // Ważne: usuwamy ewentualny znak ? lub # z końca base url
+            const cleanBaseUrl = baseUrl.split('?')[0].split('#')[0];
 
-            // Tworzymy pełne linki z parametrem ?room=XYZ
-            const obsUrl = `${baseUrl}obs.html?room=${roomId}`;
-            const directorUrl = `${baseUrl}director.html?room=${roomId}`;
-            const guestUrl = `${baseUrl}guest.html?room=${roomId}`;
+            document.getElementById('obs-link').value = `${cleanBaseUrl}obs.html?room=${roomId}`;
+            document.getElementById('director-link').value = `${cleanBaseUrl}director.html?room=${roomId}`;
+            document.getElementById('guest-link').value = `${cleanBaseUrl}guest.html?room=${roomId}`;
 
-            // Wstawiamy do inputów
-            document.getElementById('obs-link').value = obsUrl;
-            document.getElementById('director-link').value = directorUrl;
-            document.getElementById('guest-link').value = guestUrl;
-
-            // Pokazujemy sekcję
             document.getElementById('links-area').style.display = 'block';
         }
 
@@ -75,7 +69,7 @@
             const copyText = document.getElementById(elementId);
             copyText.select();
             document.execCommand("copy");
-            alert("Skopiowano link!");
+            alert("Skopiowano!");
         }
     </script>
 </body>
