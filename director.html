@@ -2,82 +2,94 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>Panel Reżysera</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>REŻYSERKA</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #222; color: white; text-align: center; padding: 20px; }
-        
-        .panel { max-width: 500px; margin: 0 auto; background: #333; padding: 20px; border-radius: 10px; }
-        h2 { margin-top: 0; color: #00d2ff; }
-        
-        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
-        
-        button { 
-            padding: 20px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; 
-            background: #444; color: white; transition: 0.2s; 
-        }
-        button:hover { background: #00d2ff; color: #000; }
-        button:active { transform: scale(0.95); }
-
-        .status { margin-bottom: 15px; font-weight: bold; color: #888; }
-        .connected { color: #00ff00; }
-        .disconnected { color: #ff4444; }
+        body { font-family: sans-serif; background: #333; color: white; text-align: center; padding: 20px; }
+        .panel { max-width: 500px; margin: 0 auto; background: #222; padding: 20px; border-radius: 10px; }
+        button { display: block; width: 100%; padding: 15px; font-size: 18px; margin: 10px 0; cursor: pointer; border: none; border-radius: 5px; background: #007bff; color: white; transition: 0.2s; }
+        button:hover { background: #0056b3; }
+        input { padding: 10px; font-size: 16px; width: 80%; text-align: center; margin-bottom: 10px; }
+        .status { margin-bottom: 15px; color: #aaa; font-weight: bold; }
+        #control-panel { display: none; margin-top: 20px; border-top: 1px solid #444; padding-top: 20px; }
+        h2 { margin-top: 0; }
     </style>
 </head>
 <body>
     <div class="panel">
-        <h2>🎛️ Reżyserka</h2>
-        <div id="status-msg" class="status">Łączenie ze studiem...</div>
+        <h1>Panel Reżysera</h1>
         
-        <div class="btn-grid">
+        <div class="status" id="status-msg">Łączenie z serwerem...</div>
+        
+        <div id="login-panel">
+            <label>ID Studia (OBS):</label><br>
+            <input type="text" id="target-id" value="">
+            <button onclick="connectToOBS()">Połącz z OBS</button>
+        </div>
+
+        <div id="control-panel">
+            <h2>Wybierz układ:</h2>
             <button onclick="sendLayout('layout-grid')">🔳 Grid (Siatka)</button>
             <button onclick="sendLayout('layout-sidebar-right')">➡️ Pasek Prawy</button>
             <button onclick="sendLayout('layout-bottom')">⬇️ Pasek Dolny</button>
-            <button onclick="sendLayout('layout-spotlight')">⏺️ Pełny Ekran</button>
         </div>
     </div>
 
     <script>
-        const peer = new Peer(); 
+        // Ta sama konfiguracja TURN dla pewności połączenia
+        const turnConfig = [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+            { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+            { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
+        ];
+
+        const peer = new Peer(undefined, {
+            config: { iceServers: turnConfig }
+        });
+
         let conn = null;
 
-        // Auto-połączenie po załadowaniu
-        window.onload = function() {
+        peer.on('open', () => {
+            document.getElementById('status-msg').innerText = "Serwer OK. Podaj ID pokoju.";
+            
+            // Automatyczne łączenie z URL
             const urlParams = new URLSearchParams(window.location.search);
             const roomID = urlParams.get('room');
-            
             if(roomID) {
-                connectToOBS(roomID);
-            } else {
-                document.getElementById('status-msg').innerText = "Błąd: Brak ID pokoju w linku.";
+                document.getElementById('target-id').value = roomID;
+                document.getElementById('status-msg').innerText = "Auto-łączenie z: " + roomID;
+                setTimeout(connectToOBS, 1000);
             }
-        }
+        });
 
-        function connectToOBS(roomID) {
-            // Łączymy się do ID pokoju (który jest ID OBS-a)
-            conn = peer.connect(roomID);
+        function connectToOBS() {
+            const targetId = document.getElementById('target-id').value;
+            if(!targetId) return alert("Brak ID!");
+
+            document.getElementById('status-msg').innerText = "Nawiązywanie połączenia...";
+
+            conn = peer.connect(targetId);
 
             conn.on('open', () => {
-                const stat = document.getElementById('status-msg');
-                stat.innerText = "✅ POŁĄCZONO Z OBS";
-                stat.className = "status connected";
+                document.getElementById('status-msg').innerText = "✅ POŁĄCZONO Z STUDIO!";
+                document.getElementById('status-msg').style.color = "#0f0";
+                document.getElementById('control-panel').style.display = "block";
+                document.getElementById('login-panel').style.display = "none";
             });
 
-            conn.on('close', () => {
-                document.getElementById('status-msg').innerText = "❌ ROZŁĄCZONO";
-                document.getElementById('status-msg').className = "status disconnected";
+            conn.on('error', (err) => {
+                alert("Błąd połączenia: " + err);
+                document.getElementById('status-msg').innerText = "Błąd połączenia.";
             });
-            
-            conn.on('error', (err) => console.error("Błąd połączenia:", err));
         }
 
         function sendLayout(layoutName) {
             if(conn && conn.open) {
                 conn.send({ type: 'layout', mode: layoutName });
-                console.log("Wysłano układ:", layoutName);
             } else {
-                alert("Brak połączenia z OBS! Odśwież stronę.");
+                alert("Rozłączono z OBS!");
             }
         }
     </script>

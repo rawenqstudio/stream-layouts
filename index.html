@@ -2,47 +2,56 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>Stream Layouts - Generator</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StreamLayouts - Generator Pokoi</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: white; text-align: center; padding-top: 50px; }
+        body { font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: white; text-align: center; padding-top: 50px; margin: 0; }
         .container { max-width: 600px; margin: 0 auto; background: #2a2a2a; padding: 40px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         h1 { margin-bottom: 30px; color: #00d2ff; }
-        button { background: linear-gradient(45deg, #00d2ff, #3a7bd5); border: none; padding: 15px 30px; color: white; font-size: 1.2em; border-radius: 30px; cursor: pointer; transition: transform 0.2s; }
+        p { color: #ccc; line-height: 1.6; }
+        button { background: linear-gradient(45deg, #00d2ff, #3a7bd5); border: none; padding: 15px 30px; color: white; font-size: 1.2em; border-radius: 30px; cursor: pointer; transition: transform 0.2s; margin-top: 20px; }
         button:hover { transform: scale(1.05); }
         
-        #links-area { display: none; margin-top: 30px; text-align: left; }
+        #links-area { display: none; margin-top: 40px; text-align: left; border-top: 1px solid #444; padding-top: 20px; }
         .link-group { margin-bottom: 20px; background: #333; padding: 15px; border-radius: 8px; }
-        .link-group label { display: block; color: #aaa; font-size: 0.9em; margin-bottom: 5px; }
-        .link-group input { width: 95%; padding: 10px; background: #111; border: 1px solid #444; color: #fff; border-radius: 5px; }
-        .copy-btn { margin-top: 5px; font-size: 0.8em; padding: 5px 10px; background: #555; border: none; color: white; cursor: pointer; border-radius: 4px;}
-        .copy-btn:hover { background: #777; }
+        .link-group label { display: block; color: #00d2ff; font-weight: bold; margin-bottom: 8px; font-size: 0.9em; }
+        .input-row { display: flex; gap: 10px; }
+        .link-group input { flex-grow: 1; padding: 10px; background: #111; border: 1px solid #444; color: #fff; border-radius: 5px; font-family: monospace; }
+        .copy-btn { margin: 0; padding: 0 15px; font-size: 0.9em; background: #555; border-radius: 5px; }
+        .copy-btn:hover { background: #666; }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h1>🎥 Stream Layout Generator</h1>
-        <p>Stwórz pokój, wyślij linki gościom i steruj układem kamer w OBS.</p>
+        <h1>🎥 Stream Layouts</h1>
+        <p>Stwórz pokój, wyślij linki gościom i steruj układem kamer w OBS na żywo. <br>Działa na LTE dzięki Open Relay Project.</p>
         
         <button onclick="createRoom()">+ Stwórz Nowy Pokój</button>
 
         <div id="links-area">
             <div class="link-group">
-                <label>1. Link do OBS (Wklej jako Browser Source):</label>
-                <input type="text" id="obs-link" readonly>
-                <button class="copy-btn" onclick="copy('obs-link')">Kopiuj</button>
+                <label>1. Link do OBS (Browser Source):</label>
+                <div class="input-row">
+                    <input type="text" id="obs-link" readonly>
+                    <button class="copy-btn" onclick="copy('obs-link')">Kopiuj</button>
+                </div>
             </div>
 
             <div class="link-group">
-                <label>2. Panel Reżysera (Otwórz na telefonie/laptopie):</label>
-                <input type="text" id="director-link" readonly>
-                <button class="copy-btn" onclick="copy('director-link')">Kopiuj</button>
+                <label>2. Panel Reżysera (Na telefon):</label>
+                <div class="input-row">
+                    <input type="text" id="director-link" readonly>
+                    <button class="copy-btn" onclick="copy('director-link')">Kopiuj</button>
+                </div>
             </div>
 
             <div class="link-group">
                 <label>3. Link dla Gości (Wyślij znajomym):</label>
-                <input type="text" id="guest-link" readonly>
-                <button class="copy-btn" onclick="copy('guest-link')">Kopiuj</button>
+                <div class="input-row">
+                    <input type="text" id="guest-link" readonly>
+                    <button class="copy-btn" onclick="copy('guest-link')">Kopiuj</button>
+                </div>
             </div>
         </div>
     </div>
@@ -52,15 +61,23 @@
             // Generujemy losowe ID pokoju
             const roomId = Math.random().toString(36).substring(2, 9);
             
-            // Budujemy linki
-            const baseUrl = window.location.href.replace('index.html', ''); // Usuwa nazwę pliku, zostawia folder
-            
-            // Ważne: usuwamy ewentualny znak ? lub # z końca base url
-            const cleanBaseUrl = baseUrl.split('?')[0].split('#')[0];
+            // Pobieramy obecny adres strony
+            let baseUrl = window.location.href;
+            // Usuwamy index.html jeśli jest w adresie
+            baseUrl = baseUrl.replace('index.html', '');
+            // Usuwamy ewentualny slash na końcu, żeby nie dublować
+            if (baseUrl.endsWith('/')) {
+                baseUrl = baseUrl.slice(0, -1);
+            }
 
-            document.getElementById('obs-link').value = `${cleanBaseUrl}obs.html?room=${roomId}`;
-            document.getElementById('director-link').value = `${cleanBaseUrl}director.html?room=${roomId}`;
-            document.getElementById('guest-link').value = `${cleanBaseUrl}guest.html?room=${roomId}`;
+            // Tworzymy linki
+            const obsUrl = `${baseUrl}/obs.html?room=${roomId}`;
+            const directorUrl = `${baseUrl}/director.html?room=${roomId}`;
+            const guestUrl = `${baseUrl}/guest.html?room=${roomId}`;
+
+            document.getElementById('obs-link').value = obsUrl;
+            document.getElementById('director-link').value = directorUrl;
+            document.getElementById('guest-link').value = guestUrl;
 
             document.getElementById('links-area').style.display = 'block';
         }
@@ -68,8 +85,9 @@
         function copy(elementId) {
             const copyText = document.getElementById(elementId);
             copyText.select();
+            copyText.setSelectionRange(0, 99999); /* Dla urządzeń mobilnych */
             document.execCommand("copy");
-            alert("Skopiowano!");
+            alert("Skopiowano link!");
         }
     </script>
 </body>
