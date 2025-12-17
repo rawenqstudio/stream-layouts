@@ -2,170 +2,305 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>GOŚĆ (Kamera)</title>
+    <title>GOŚĆ - Ustawienia</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; text-align: center; background: #222; color: white; padding: 20px; }
-        .container { max-width: 500px; margin: 0 auto; }
+        body { font-family: 'Segoe UI', sans-serif; text-align: center; background: #222; color: white; padding: 20px; margin: 0; }
+        .container { max-width: 600px; margin: 0 auto; background: #333; padding: 20px; border-radius: 10px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
         
-        .video-wrapper { position: relative; display: inline-block; width: 100%; margin-top: 20px; }
-        video { width: 100%; border: 2px solid #00ff00; border-radius: 8px; background: #000; }
+        h1 { margin-top: 0; color: #00d2ff; }
         
-        /* Ikonka wyciszenia na wideo lokalnym */
+        .video-wrapper { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 8px; overflow: hidden; margin-bottom: 20px; border: 2px solid #555; }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        
+        /* Ikonka wyciszenia */
         #mute-indicator {
             position: absolute; top: 10px; right: 10px; background: red; color: white;
             padding: 5px 10px; border-radius: 5px; font-weight: bold; display: none;
-            box-shadow: 0 0 5px black;
+            box-shadow: 0 0 5px black; font-size: 0.8em; z-index: 10;
         }
 
-        input[type="text"] { width: 80%; padding: 10px; margin: 10px 0; border-radius: 5px; border: 1px solid #444; background: #111; color: white; font-size: 16px; text-align: center;}
+        /* Sekcja ustawień */
+        .settings-group { text-align: left; margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; color: #ccc; font-size: 0.9em; }
+        select, input[type="text"] { width: 100%; padding: 10px; background: #222; border: 1px solid #555; color: white; border-radius: 5px; box-sizing: border-box; }
         
-        button { padding: 15px 30px; font-size: 18px; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 5px; margin-top: 10px; width: 100%; transition: 0.2s;}
+        .checkbox-group { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; cursor: pointer; }
+        input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; }
+
+        button { padding: 15px; font-size: 18px; font-weight: bold; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 5px; width: 100%; margin-top: 10px; transition: 0.2s; }
         button:hover { background: #218838; }
         button:disabled { background: #555; cursor: not-allowed; }
 
-        #logs { margin-top: 20px; color: #aaa; font-size: 0.9em; text-align: left; background: #111; padding: 10px; border-radius: 5px; font-family: monospace; }
+        #logs { margin-top: 20px; color: #aaa; font-size: 0.8em; text-align: left; background: #111; padding: 10px; border-radius: 5px; font-family: monospace; max-height: 150px; overflow-y: auto; }
         .error { color: #ff4444; } .success { color: #00ff00; }
+        
         #target-id { display: none; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Jesteś Gościem</h1>
-        <p>Gdy Reżyser Cię wyciszy, zobaczysz komunikat.</p>
+        <h1>Ustawienia Studia</h1>
         
+        <!-- Podgląd wideo -->
         <div class="video-wrapper">
             <video id="localVideo" autoplay muted playsinline></video>
-            <div id="mute-indicator">🔇 WYCISZONY PRZEZ STUDIO</div>
+            <div id="mute-indicator">🔇 WYCISZONY</div>
+        </div>
+
+        <!-- Wybór urządzeń -->
+        <div class="settings-group">
+            <label>📷 Wybierz Kamerę:</label>
+            <select id="videoSource" onchange="startPreview()"></select>
+        </div>
+
+        <div class="settings-group">
+            <label>🎤 Wybierz Mikrofon:</label>
+            <select id="audioSource" onchange="startPreview()"></select>
+        </div>
+
+        <!-- Opcje zaawansowane -->
+        <div class="settings-group">
+            <label class="checkbox-group">
+                <input type="checkbox" id="start-muted"> 
+                <span>Dołącz z wyciszonym mikrofonem</span>
+            </label>
+            
+            <label class="checkbox-group" title="Wymusza bardzo wysoki bitrate (jak VDO.Ninja)">
+                <input type="checkbox" id="high-bitrate" checked> 
+                <span>🔥 Unlock Bitrate (20 Mbps / High Quality)</span>
+            </label>
+        </div>
+
+        <div class="settings-group">
+            <label>Twoje Imię:</label>
+            <input type="text" id="username" placeholder="Wpisz swoje imię...">
         </div>
         
-        <br>
-        <input type="text" id="username" placeholder="Twoje Imię (Opcjonalne)">
         <input type="text" id="target-id">
         <button id="join-btn" onclick="joinRoom()">DOŁĄCZ DO STUDIA</button>
+
         <div id="logs"></div>
     </div>
 
     <script>
+        // --- LOGOWANIE ---
         function log(msg, type = 'info') {
             const logs = document.getElementById('logs');
             const p = document.createElement('div');
             p.innerText = `> ${msg}`;
             if(type === 'error') p.className = 'error';
             if(type === 'success') p.className = 'success';
-            logs.appendChild(p);
+            logs.prepend(p);
             console.log(msg);
         }
 
+        // --- KONFIGURACJA SIECIOWA (TURN) ---
         const urlParams = new URLSearchParams(window.location.search);
         const useStunOnly = urlParams.get('stunonly');
-        const fullTurnConfig = [
+        const selectedConfig = useStunOnly ? [ { urls: "stun:stun.l.google.com:19302" } ] : [
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "turn:openrelay.metered.ca:80?transport=udp", username: "openrelayproject", credential: "openrelayproject" },
             { urls: "turn:openrelay.metered.ca:80?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
             { urls: "turn:openrelay.metered.ca:443?transport=udp", username: "openrelayproject", credential: "openrelayproject" },
             { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
         ];
-        const stunOnlyConfig = [ { urls: "stun:stun.l.google.com:19302" } ];
-        const selectedConfig = useStunOnly ? stunOnlyConfig : fullTurnConfig;
 
-        if(useStunOnly) log("🚀 TRYB TURBO (STUN Only) włączony.");
-
-        const peer = new Peer(undefined, {
-            config: { iceServers: selectedConfig },
-            debug: 1
-        }); 
-
-        let globalConn = null;
+        const peer = new Peer(undefined, { config: { iceServers: selectedConfig } }); 
+        
+        // Zmienne globalne
         let localStream = null;
+        let globalConn = null;
+        const videoSelect = document.getElementById('videoSource');
+        const audioSelect = document.getElementById('audioSource');
 
-        window.onload = function() {
+        // --- INICJALIZACJA ---
+        window.onload = async function() {
             const roomID = urlParams.get('room');
             if(roomID) {
                 document.getElementById('target-id').value = roomID;
-                log(`Pokój: ${roomID}. Gotowy.`);
+                log(`Pokój wykryty: ${roomID}`);
+                
+                // Najpierw prosimy o dostęp, żeby pobrać listę urządzeń
+                await requestPermissions();
+                // Potem ładujemy listę do selectów
+                await getDevices();
+                // Uruchamiamy podgląd
+                startPreview();
             } else {
                 log('BŁĄD: Brak ID pokoju w linku.', 'error');
                 document.getElementById('join-btn').disabled = true;
             }
         }
 
-        window.addEventListener('beforeunload', () => {
-            if(globalConn && globalConn.open) globalConn.send({ type: 'leave' });
-        });
+        // 1. Prośba o uprawnienia (niezbędne do wylistowania nazw kamer)
+        async function requestPermissions() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                // Zatrzymujemy natychmiast, to był tylko test uprawnień
+                stream.getTracks().forEach(track => track.stop());
+            } catch (err) {
+                log("Błąd uprawnień: " + err.name, 'error');
+                alert("Musisz zezwolić na dostęp do kamery i mikrofonu!");
+            }
+        }
 
-        peer.on('open', (id) => log(`Twoje ID: ${id}`, 'success'));
-
-        function joinRoom() {
-            const targetId = document.getElementById('target-id').value;
-            const username = document.getElementById('username').value.trim();
-            const btn = document.getElementById('join-btn');
+        // 2. Pobieranie listy urządzeń
+        async function getDevices() {
+            const devices = await navigator.mediaDevices.enumerateDevices();
             
-            btn.disabled = true;
-            btn.innerText = "Łączenie...";
-            
-            navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-            .then((stream) => {
-                localStream = stream;
-                document.getElementById('localVideo').srcObject = stream;
-                
-                log(`Kamera OK. Dzwonię do OBS...`);
-                
-                const call = peer.call(targetId, stream);
-                globalConn = peer.connect(targetId);
+            videoSelect.innerHTML = '';
+            audioSelect.innerHTML = '';
 
-                globalConn.on('open', () => {
-                   log('Połączenie zestawione!', 'success');
-                   btn.innerText = "JESTEŚ NA WIZJI";
-                   globalConn.send({ type: 'identify', name: username });
-                });
+            devices.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
                 
-                // --- ODBIERANIE ROZKAZÓW Z OBS ---
-                globalConn.on('data', (data) => {
-                    // Reżyser kazał przełączyć mikrofon
-                    if(data.type === 'mute-cmd') {
-                        toggleMic(data.state); // true = wycisz, false = odcisz
-                    }
-                });
-
-                const handleClose = () => {
-                    log("Rozłączono.", 'error');
-                    setTimeout(() => location.reload(), 2000);
-                };
-                call.on('close', handleClose);
-                call.on('error', (err) => log("Błąd wideo: " + err, 'error'));
-                globalConn.on('close', handleClose);
-                
-                setInterval(() => {
-                    if(globalConn.open) globalConn.send({ type: 'heartbeat' });
-                }, 2000);
-            })
-            .catch(err => {
-                log(`Błąd kamery: ${err.name}`, 'error');
-                btn.disabled = false;
-                btn.innerText = "SPRÓBUJ PONOWNIE";
+                if (device.kind === 'videoinput') {
+                    option.text = device.label || `Kamera ${videoSelect.length + 1}`;
+                    videoSelect.appendChild(option);
+                } else if (device.kind === 'audioinput') {
+                    option.text = device.label || `Mikrofon ${audioSelect.length + 1}`;
+                    audioSelect.appendChild(option);
+                }
             });
         }
 
-        function toggleMic(shouldMute) {
-            if(!localStream) return;
+        // 3. Uruchamianie podglądu (Lokalnie)
+        async function startPreview() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+
+            const videoSource = videoSelect.value;
+            const audioSource = audioSelect.value;
+
+            const constraints = {
+                video: { deviceId: videoSource ? { exact: videoSource } : undefined, width: { ideal: 1920 }, height: { ideal: 1080 } }, // Próbujemy HD
+                audio: { deviceId: audioSource ? { exact: audioSource } : undefined }
+            };
+
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                document.getElementById('localVideo').srcObject = localStream;
+                
+                // Sprawdź czy użytkownik zaznaczył "start muted" w podglądzie
+                checkMuteState(); 
+            } catch (err) {
+                log("Błąd podglądu: " + err.name, 'error');
+            }
+        }
+
+        // Obsługa checkboxa "Dołącz wyciszony" w czasie rzeczywistym
+        document.getElementById('start-muted').addEventListener('change', checkMuteState);
+
+        function checkMuteState() {
+            if (!localStream) return;
+            const shouldBeMuted = document.getElementById('start-muted').checked;
             const audioTrack = localStream.getAudioTracks()[0];
             
             if(audioTrack) {
-                audioTrack.enabled = !shouldMute; // enabled=true to znaczy słychać
-                
-                // Pokaż/ukryj komunikat na ekranie
-                const indicator = document.getElementById('mute-indicator');
-                indicator.style.display = shouldMute ? 'block' : 'none';
-                
-                if(shouldMute) log("Zostałeś wyciszony przez studio.", 'error');
-                else log("Mikrofon włączony.", 'success');
-
-                // Potwierdź status do OBS (żeby Reżyser widział zmianę koloru)
-                if(globalConn && globalConn.open) {
-                    globalConn.send({ type: 'mic-status', muted: shouldMute });
-                }
+                audioTrack.enabled = !shouldBeMuted;
+                toggleMuteUI(shouldBeMuted);
             }
+        }
+
+        function toggleMuteUI(isMuted) {
+            const ind = document.getElementById('mute-indicator');
+            ind.style.display = isMuted ? 'block' : 'none';
+            ind.innerText = isMuted ? '🔇 WYCISZONY' : '';
+        }
+
+        // --- DOŁĄCZANIE DO STUDIA ---
+        peer.on('open', (id) => log(`Gotowy. Twoje ID: ${id}`, 'success'));
+
+        async function joinRoom() {
+            const targetId = document.getElementById('target-id').value;
+            const username = document.getElementById('username').value.trim();
+            const highBitrate = document.getElementById('high-bitrate').checked;
+            const btn = document.getElementById('join-btn');
+            
+            // Blokujemy interfejs
+            btn.disabled = true;
+            btn.innerText = "Łączenie...";
+            videoSelect.disabled = true;
+            audioSelect.disabled = true;
+            
+            log(`Dzwonię do OBS...`);
+            
+            // 1. Dzwonimy z obecnym strumieniem (z wybranego urządzenia)
+            const call = peer.call(targetId, localStream);
+            
+            // 2. Łączymy dane (chat/sterowanie)
+            globalConn = peer.connect(targetId);
+
+            globalConn.on('open', () => {
+                log('Połączenie zestawione!', 'success');
+                btn.innerText = "JESTEŚ NA WIZJI";
+                btn.style.background = "#dc3545"; // Czerwony (Na antenie)
+                
+                // Wysyłamy imię i status mikrofonu
+                const isMuted = document.getElementById('start-muted').checked;
+                globalConn.send({ type: 'identify', name: username });
+                globalConn.send({ type: 'mic-status', muted: isMuted });
+            });
+
+            // --- UNLOCK BITRATE (20 Mbps) ---
+            if(highBitrate) {
+                // Musimy poczekać chwilę aż połączenie się zestawi
+                // W PeerJS nie ma łatwego dostępu do 'onnegotiationneeded', więc robimy hack z timerem
+                // lub podpinamy się pod wewnętrzny peerConnection
+                
+                setTimeout(() => {
+                    const pc = call.peerConnection;
+                    const sender = pc.getSenders().find(s => s.track.kind === 'video');
+                    
+                    if(sender) {
+                        const params = sender.getParameters();
+                        if (!params.encodings) params.encodings = [{}];
+                        
+                        // Ustawiamy maxBitrate na 20,000,000 bps (20 Mbps)
+                        params.encodings[0].maxBitrate = 20000000; 
+                        
+                        sender.setParameters(params)
+                            .then(() => log("🔥 Bitrate odblokowany do 20 Mbps!", 'success'))
+                            .catch(e => log("Błąd Bitrate Unlock: " + e, 'error'));
+                    }
+                }, 1000); // 1 sekunda po połączeniu
+            }
+
+            // Obsługa zdalnego sterowania z Reżyserki
+            globalConn.on('data', (data) => {
+                if(data.type === 'mute-cmd') {
+                    // Aktualizujemy stan lokalny
+                    const audioTrack = localStream.getAudioTracks()[0];
+                    if(audioTrack) {
+                        audioTrack.enabled = !data.state; // state=true to wycisz
+                        toggleMuteUI(data.state);
+                        // Aktualizuj checkbox w GUI dla spójności
+                        document.getElementById('start-muted').checked = data.state;
+                        // Potwierdź
+                        globalConn.send({ type: 'mic-status', muted: data.state });
+                    }
+                }
+            });
+
+            // Heartbeat & Errors
+            const handleClose = () => {
+                log("Rozłączono.", 'error');
+                setTimeout(() => location.reload(), 3000);
+            };
+            call.on('close', handleClose);
+            globalConn.on('close', handleClose);
+            
+            setInterval(() => {
+                if(globalConn && globalConn.open) globalConn.send({ type: 'heartbeat' });
+            }, 2000);
+            
+            // Sygnał wyjścia
+            window.addEventListener('beforeunload', () => {
+                if(globalConn && globalConn.open) globalConn.send({ type: 'leave' });
+            });
         }
     </script>
 </body>
