@@ -2,86 +2,77 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>REŻYSERKA</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         body { font-family: sans-serif; background: #333; color: white; text-align: center; padding: 20px; }
-        .panel { max-width: 500px; margin: 0 auto; background: #222; padding: 20px; border-radius: 10px; }
-        button { display: block; width: 100%; padding: 15px; font-size: 18px; margin: 10px 0; cursor: pointer; border: none; border-radius: 5px; background: #007bff; color: white; transition: 0.2s; }
+        button { padding: 15px 25px; font-size: 18px; margin: 10px; cursor: pointer; border: none; border-radius: 5px; background: #007bff; color: white; transition: 0.2s; width: 80%; max-width: 300px; }
         button:hover { background: #0056b3; }
-        input { padding: 10px; font-size: 16px; width: 80%; text-align: center; margin-bottom: 10px; }
-        .status { margin-bottom: 15px; color: #aaa; font-weight: bold; }
-        #control-panel { display: none; margin-top: 20px; border-top: 1px solid #444; padding-top: 20px; }
-        h2 { margin-top: 0; }
+        .status { margin-top: 10px; color: #aaa; font-weight: bold;}
+        .controls { display: none; margin-top: 30px; border-top: 1px solid #555; padding-top: 20px;}
+        input { display: none; }
     </style>
 </head>
 <body>
-    <div class="panel">
-        <h1>Panel Reżysera</h1>
-        
-        <div class="status" id="status-msg">Łączenie z serwerem...</div>
-        
-        <div id="login-panel">
-            <label>ID Studia (OBS):</label><br>
-            <input type="text" id="target-id" value="">
-            <button onclick="connectToOBS()">Połącz z OBS</button>
-        </div>
+    <h1>Panel Reżysera</h1>
+    <div class="status" id="status-msg">Inicjalizacja...</div>
+    <input type="text" id="target-id">
 
-        <div id="control-panel">
-            <h2>Wybierz układ:</h2>
-            <button onclick="sendLayout('layout-grid')">🔳 Grid (Siatka)</button>
-            <button onclick="sendLayout('layout-sidebar-right')">➡️ Pasek Prawy</button>
-            <button onclick="sendLayout('layout-bottom')">⬇️ Pasek Dolny</button>
-        </div>
+    <div class="controls" id="control-panel">
+        <h2>Zmień układ:</h2>
+        <button onclick="sendLayout('layout-grid')">🔳 Grid (Siatka)</button><br>
+        <button onclick="sendLayout('layout-sidebar-right')">➡️ Pasek Prawy</button><br>
+        <button onclick="sendLayout('layout-bottom')">⬇️ Pasek Dolny</button>
     </div>
 
     <script>
-        // Ta sama konfiguracja TURN dla pewności połączenia
-        const turnConfig = [
+        // --- LOGIKA SIECIOWA ---
+        const urlParams = new URLSearchParams(window.location.search);
+        const useStunOnly = urlParams.get('stunonly');
+
+        const fullTurnConfig = [
             { urls: "stun:stun.l.google.com:19302" },
-            { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
-            { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+            { urls: "turn:openrelay.metered.ca:80?transport=udp", username: "openrelayproject", credential: "openrelayproject" },
+            { urls: "turn:openrelay.metered.ca:80?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
+            { urls: "turn:openrelay.metered.ca:443?transport=udp", username: "openrelayproject", credential: "openrelayproject" },
             { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
         ];
 
-        const peer = new Peer(undefined, {
-            config: { iceServers: turnConfig }
-        });
+        const stunOnlyConfig = [ { urls: "stun:stun.l.google.com:19302" } ];
+        const selectedConfig = useStunOnly ? stunOnlyConfig : fullTurnConfig;
 
+        // Reżyser ma losowe ID
+        const peer = new Peer(undefined, {
+            config: { iceServers: selectedConfig },
+            debug: 2
+        });
+        
         let conn = null;
 
-        peer.on('open', () => {
-            document.getElementById('status-msg').innerText = "Serwer OK. Podaj ID pokoju.";
-            
-            // Automatyczne łączenie z URL
-            const urlParams = new URLSearchParams(window.location.search);
+        window.onload = function() {
             const roomID = urlParams.get('room');
             if(roomID) {
                 document.getElementById('target-id').value = roomID;
-                document.getElementById('status-msg').innerText = "Auto-łączenie z: " + roomID;
+                document.getElementById('status-msg').innerText = "Szukam OBS...";
                 setTimeout(connectToOBS, 1000);
+            } else {
+                document.getElementById('status-msg').innerText = "BŁĄD: Brak ID w linku.";
             }
-        });
+        }
 
         function connectToOBS() {
             const targetId = document.getElementById('target-id').value;
-            if(!targetId) return alert("Brak ID!");
-
-            document.getElementById('status-msg').innerText = "Nawiązywanie połączenia...";
-
             conn = peer.connect(targetId);
 
             conn.on('open', () => {
-                document.getElementById('status-msg').innerText = "✅ POŁĄCZONO Z STUDIO!";
-                document.getElementById('status-msg').style.color = "#0f0";
+                document.getElementById('status-msg').innerText = "✅ POŁĄCZONO Z OBS";
+                document.getElementById('status-msg').style.color = "#00ff00";
                 document.getElementById('control-panel').style.display = "block";
-                document.getElementById('login-panel').style.display = "none";
             });
 
             conn.on('error', (err) => {
-                alert("Błąd połączenia: " + err);
                 document.getElementById('status-msg').innerText = "Błąd połączenia.";
+                alert("Błąd: " + err);
             });
         }
 
@@ -89,7 +80,7 @@
             if(conn && conn.open) {
                 conn.send({ type: 'layout', mode: layoutName });
             } else {
-                alert("Rozłączono z OBS!");
+                alert("Brak połączenia z OBS!");
             }
         }
     </script>
