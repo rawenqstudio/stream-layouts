@@ -145,43 +145,32 @@
         }
 
         function addVideo(stream, id) {
-            // Zabezpieczenie przed duplikatami
+            // 1. Sprawdzenie czy już istnieje
             if(document.getElementById(`box-${id}`)) return;
             
-            // Inicjujemy heartbeat
+            console.log(`Dodaję wideo dla ID: ${id}`); // Log dla debugowania
             heartbeats[id] = Date.now();
 
-            // --- KROK 1: ROZDZIELENIE ŚCIEŻEK (Metoda VDO.Ninja) ---
-            // Tworzymy dwa osobne, czyste strumienie
-            const videoStream = new MediaStream();
-            const audioStream = new MediaStream();
-
-            // Wyciągamy ścieżkę wideo z głównego strumienia i wkładamy do videoStream
-            stream.getVideoTracks().forEach(track => videoStream.addTrack(track));
-            
-            // Wyciągamy ścieżkę audio i wkładamy do audioStream
-            stream.getAudioTracks().forEach(track => audioStream.addTrack(track));
-
-            // --- KROK 2: BUDOWANIE DOM ---
+            // 2. Kontener
             const box = document.createElement('div');
             box.className = 'video-box';
             box.id = `box-${id}`;
 
-            // Element WIDEO (Odtwarza tylko obraz)
+            // 3. WIDEO (Obraz + Cisza)
             const video = document.createElement('video');
-            video.srcObject = videoStream; 
-            video.muted = true; // Musi być wyciszony dla autostartu wideo!
+            video.srcObject = stream; // Używamy głównego strumienia
+            video.muted = true;       // KLUCZOWE: Wyciszamy wideo, żeby nie dublować dźwięku i wymusić autostart
             video.autoplay = true;
             video.playsInline = true;
             
-            // Element AUDIO (Odtwarza tylko dźwięk)
+            // 4. AUDIO (Tylko Dźwięk)
             const audio = document.createElement('audio');
-            audio.srcObject = audioStream;
-            audio.muted = false; // To ma grać!
+            audio.srcObject = stream; // Używamy tego samego strumienia
+            audio.muted = false;      // To ma grać!
             audio.autoplay = true;
-            // Ważne: nie dodajemy controls, jest niewidzialny
-            
-            // Elementy UI
+            audio.id = `audio-${id}`;
+
+            // 5. Elementy graficzne
             const label = document.createElement('div');
             label.className = 'label'; label.id = `label-${id}`;
 
@@ -189,24 +178,21 @@
             muteIcon.className = 'mute-icon'; muteIcon.innerText = '🔇';
             muteIcon.id = `mute-${id}`;
 
-            // Składamy całość
+            // 6. Składanie
             box.appendChild(video);
             box.appendChild(label);
             box.appendChild(muteIcon);
             
-            // Dodajemy audio do kontenera (musi być w dokumencie, żeby grało)
+            // Audio dodajemy do boxa (jest niewidoczne, ale musi być w DOM)
             box.appendChild(audio);
             
             container.appendChild(box);
 
-            // --- KROK 3: URUCHAMIANIE ---
-            // Wideo powinno ruszyć zawsze (bo jest muted)
-            video.play().catch(e => console.error("Błąd startu wideo:", e));
+            // 7. Uruchamianie z obsługą błędów
+            video.play().then(() => console.log("Wideo wystartowało")).catch(e => console.error("Błąd wideo:", e));
             
-            // Audio próbujemy uruchomić
-            audio.play().catch(e => {
-                console.warn("Autoplay Audio zablokowane - wymagana interakcja w OBS!", e);
-                // Jeśli tu wejdzie, wideo będzie działać, ale dźwięk może wymagać kliknięcia "Interact" w OBS
+            audio.play().then(() => console.log("Audio wystartowało")).catch(e => {
+                console.warn("Audio zablokowane - wymagana interakcja w OBS!", e);
             });
         }
 
