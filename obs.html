@@ -2,24 +2,18 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>WIDOK OBS</title>
+    <title>WIDOK OBS (Multi-STUN)</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+        #video-container { width: 100%; height: 100%; position: relative; }
+        video { object-fit: cover; border: 2px solid white; background: #000; transition: all 0.5s ease; }
         
-        #video-container { width: 100%; height: 100%; transition: all 0.5s ease; position: relative; }
-        video { object-fit: cover; border: 2px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.5); transition: all 0.5s ease; background: #000; }
-
-        /* --- STYLE UKŁADÓW --- */
-        /* 1. Grid (Siatka) */
+        /* Twoje style układów */
         .layout-grid { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; padding: 20px; box-sizing: border-box; }
         .layout-grid video { width: 45%; height: 45%; } 
-
-        /* 2. Pasek Prawy */
         .layout-sidebar-right { display: flex; flex-direction: column; justify-content: center; align-items: flex-end; padding-right: 20px; height: 100vh; box-sizing: border-box; }
         .layout-sidebar-right video { width: 300px; height: 169px; margin-bottom: 10px; }
-
-        /* 3. Pasek Dolny */
         .layout-bottom { display: flex; flex-direction: row; justify-content: center; align-items: flex-end; padding-bottom: 20px; height: 100vh; box-sizing: border-box; }
         .layout-bottom video { width: 250px; height: 140px; margin: 0 10px; }
     </style>
@@ -28,67 +22,67 @@
     <div id="video-container" class="layout-grid"></div>
 
     <script>
-        // Konfiguracja serwerów TURN (Open Relay Project)
-        const turnConfig = [
+        const urlParams = new URLSearchParams(window.location.search);
+        const myID = urlParams.get('room') || 'test-room';
+        // Sprawdź flagę ?stunonly w URL
+        const useStunOnly = urlParams.has('stunonly');
+
+        // --- DEFINICJA SERWERÓW ---
+        const stunServers = [
             { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+            { urls: "stun:openrelay.metered.ca:80" },
+            { urls: "stun:stun.stunprotocol.org" }
+        ];
+
+        const turnServers = [
             { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
             { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
             { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
         ];
 
-        // Pobieramy ID z URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const myID = urlParams.get('room') || 'test-room';
+        // Budowanie konfiguracji
+        let iceServersList = [...stunServers];
+        if (!useStunOnly) {
+            iceServersList = [...stunServers, ...turnServers];
+            console.log("OBS: Tryb standardowy (STUN + TURN)");
+        } else {
+            console.log("OBS: Tryb STUN-ONLY (Oszczędzanie transferu)");
+        }
 
-        console.log("Uruchamiam OBS z ID:", myID);
-        
-        const peer = new Peer(myID, {
-            config: { iceServers: turnConfig }
-        });
+        const peerConfig = {
+            config: {
+                iceServers: iceServersList,
+                iceTransportPolicy: 'all' // Domyślnie pozwalamy na wszystko
+            }
+        };
 
+        const peer = new Peer(myID, peerConfig);
         const container = document.getElementById('video-container');
 
-        peer.on('open', (id) => {
-            console.log('Gotowy! Twoje ID to: ' + id);
-        });
+        peer.on('open', (id) => console.log('OBS gotowy, ID: ' + id));
 
-        // Obsługa wideo od Gości
         peer.on('call', (call) => {
-            console.log("Gość dzwoni...");
-            call.answer(); 
-            call.on('stream', (remoteStream) => {
-                addVideo(remoteStream, call.peer);
-            });
+            call.answer();
+            call.on('stream', (stream) => addVideo(stream, call.peer));
         });
 
-        // Obsługa sterowania od Reżysera
+        // Obsługa sterowania (bez zmian)
         peer.on('connection', (conn) => {
-            console.log("Reżyser połączony!");
             conn.on('data', (data) => {
-                console.log("Rozkaz:", data);
-                if(data.type === 'layout') {
-                    container.className = data.mode;
-                }
+                if(data.type === 'layout') container.className = data.mode;
             });
         });
 
         function addVideo(stream, id) {
             if(document.getElementById(`vid-${id}`)) return;
-
             const video = document.createElement('video');
             video.srcObject = stream;
             video.id = `vid-${id}`;
-            
-            // WAŻNE DLA AUTOSTARTU
             video.muted = true; 
             video.autoplay = true;
-            video.playsInline = true; 
-            
-            // Wymuszenie odtwarzania
-            video.onloadedmetadata = () => {
-                video.play().catch(e => console.error("Autoplay blocked:", e));
-            };
-
+            video.playsInline = true;
+            video.onloadedmetadata = () => video.play().catch(e => console.error(e));
             container.appendChild(video);
         }
     </script>
