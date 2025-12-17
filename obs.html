@@ -5,31 +5,60 @@
     <title>WIDOK OBS</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; font-family: 'Segoe UI', sans-serif; }
+        
         #video-container { width: 100%; height: 100%; transition: all 0.5s ease; position: relative; }
-        video { object-fit: cover; border: 2px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.5); transition: all 0.5s ease; background: #000; }
+        
+        .video-box {
+            position: relative;
+            overflow: hidden;
+            border: 2px solid white;
+            box-shadow: 0 0 15px rgba(0,0,0,0.7);
+            background: #000;
+            transition: all 0.5s ease;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        /* Styl podpisu */
+        .label {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px 15px;
+            border-radius: 4px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px black;
+            border-left: 4px solid #00d2ff;
+            z-index: 10;
+            display: none; /* ZMIANA: Domyślnie ukryte! */
+        }
 
         /* UKŁADY */
-        .layout-grid { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; padding: 20px; box-sizing: border-box; }
-        .layout-grid video { width: 45%; height: 45%; }
-
+        .layout-grid { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 15px; padding: 20px; box-sizing: border-box; }
+        .layout-grid .video-box { width: 45%; height: 45%; } 
         .layout-sidebar-right { display: flex; flex-direction: column; justify-content: center; align-items: flex-end; padding-right: 20px; height: 100vh; }
-        .layout-sidebar-right video { width: 300px; height: 169px; margin-bottom: 10px; }
-
+        .layout-sidebar-right .video-box { width: 320px; height: 180px; margin-bottom: 15px; }
         .layout-bottom { display: flex; flex-direction: row; justify-content: center; align-items: flex-end; padding-bottom: 20px; height: 100vh; }
-        .layout-bottom video { width: 250px; height: 140px; margin: 0 10px; }
+        .layout-bottom .video-box { width: 280px; height: 157px; margin: 0 10px; }
     </style>
 </head>
 <body>
     <div id="video-container" class="layout-grid"></div>
 
     <script>
-        // --- LOGIKA SIECIOWA (Smart Config) ---
         const urlParams = new URLSearchParams(window.location.search);
         const myID = urlParams.get('room') || 'test-room';
         const useStunOnly = urlParams.get('stunonly');
 
-        // 1. Konfiguracja Pancerna (TURN - dla LTE/Trudnych sieci)
         const fullTurnConfig = [
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "turn:openrelay.metered.ca:80?transport=udp", username: "openrelayproject", credential: "openrelayproject" },
@@ -38,57 +67,84 @@
             { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
         ];
 
-        // 2. Konfiguracja Szybka (Tylko Google STUN - niskie opóźnienie)
-        const stunOnlyConfig = [
-            { urls: "stun:stun.l.google.com:19302" }
-        ];
-
+        const stunOnlyConfig = [ { urls: "stun:stun.l.google.com:19302" } ];
         const selectedConfig = useStunOnly ? stunOnlyConfig : fullTurnConfig;
-        console.log(useStunOnly ? "🚀 Tryb STUN Only" : "🛡️ Tryb TURN (Pełny)");
 
-        // --- INICJALIZACJA ---
         const peer = new Peer(myID, {
             config: { iceServers: selectedConfig },
-            debug: 2
+            debug: 1
         });
         
         const container = document.getElementById('video-container');
 
-        peer.on('open', (id) => {
-            console.log('Gotowy! Twoje ID to: ' + id);
-        });
+        peer.on('open', (id) => console.log('OBS gotowy. ID: ' + id));
 
-        // Obsługa wideo
         peer.on('call', (call) => {
             call.answer();
             call.on('stream', (remoteStream) => {
                 addVideo(remoteStream, call.peer);
             });
+            call.on('close', () => removeVideo(call.peer));
+            call.on('error', () => removeVideo(call.peer));
         });
 
-        // Obsługa komend Reżysera
         peer.on('connection', (conn) => {
             conn.on('data', (data) => {
                 if(data.type === 'layout') {
                     container.className = data.mode;
                 }
+                if(data.type === 'identify') {
+                    // ZMIANA: Przekazujemy imię tylko jeśli istnieje
+                    updateLabel(conn.peer, data.name);
+                }
             });
+            conn.on('close', () => removeVideo(conn.peer));
+            conn.on('error', () => removeVideo(conn.peer));
         });
 
         function addVideo(stream, id) {
-            if(document.getElementById(`vid-${id}`)) return;
+            if(document.getElementById(`box-${id}`)) return;
+
+            const box = document.createElement('div');
+            box.className = 'video-box';
+            box.id = `box-${id}`;
 
             const video = document.createElement('video');
             video.srcObject = stream;
-            video.id = `vid-${id}`;
-            video.muted = true; // Ważne dla autostartu
+            video.muted = true;
             video.autoplay = true;
-            video.playsInline = true; 
+            video.playsInline = true;
             
+            const label = document.createElement('div');
+            label.className = 'label';
+            label.id = `label-${id}`;
+            // Uwaga: label jest domyślnie ukryty przez CSS (display: none)
+
+            box.appendChild(video);
+            box.appendChild(label);
+            container.appendChild(box);
+
             video.onloadedmetadata = () => {
-                video.play().catch(e => console.error("Błąd autostartu:", e));
+                video.play().catch(e => console.error("Autoplay:", e));
             };
-            container.appendChild(video);
+        }
+
+        function updateLabel(id, name) {
+            const label = document.getElementById(`label-${id}`);
+            if(label) {
+                // ZMIANA: Jeśli imię jest puste -> ukryj, jeśli jest -> pokaż
+                if (name && name.trim() !== "") {
+                    label.innerText = name;
+                    label.style.display = 'block';
+                } else {
+                    label.style.display = 'none';
+                }
+            }
+        }
+
+        function removeVideo(id) {
+            const box = document.getElementById(`box-${id}`);
+            if(box) box.remove();
         }
     </script>
 </body>
