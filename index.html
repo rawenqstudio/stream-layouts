@@ -7,16 +7,25 @@
         body { font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: white; text-align: center; padding-top: 50px; margin: 0; }
         .container { max-width: 600px; margin: 0 auto; background: #2a2a2a; padding: 40px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         h1 { margin-bottom: 30px; color: #00d2ff; }
-        button { background: linear-gradient(45deg, #00d2ff, #3a7bd5); border: none; padding: 15px 30px; color: white; font-size: 1.2em; border-radius: 30px; cursor: pointer; transition: transform 0.2s; }
-        button:hover { transform: scale(1.05); }
+        
+        /* Główny przycisk */
+        .create-btn { background: linear-gradient(45deg, #00d2ff, #3a7bd5); border: none; padding: 15px 30px; color: white; font-size: 1.2em; border-radius: 30px; cursor: pointer; transition: transform 0.2s; }
+        .create-btn:hover { transform: scale(1.05); }
         
         #links-area { display: none; margin-top: 30px; text-align: left; }
         .link-group { margin-bottom: 20px; background: #333; padding: 15px; border-radius: 8px; }
         .link-group label { display: block; color: #aaa; font-size: 0.9em; margin-bottom: 5px; }
-        .link-group input { width: 95%; padding: 10px; background: #111; border: 1px solid #444; color: #fff; border-radius: 5px; }
-        .copy-btn { margin-top: 5px; font-size: 0.8em; padding: 5px 10px; background: #555; border: none; color: white; cursor: pointer; border-radius: 3px; }
+        .link-group input { width: 95%; padding: 10px; background: #111; border: 1px solid #444; color: #fff; border-radius: 5px; display: block; margin-bottom: 10px; }
+        
+        /* Przyciski akcji (Kopiuj / Otwórz) */
+        .action-btn { font-size: 0.9em; padding: 8px 15px; border: none; color: white; cursor: pointer; border-radius: 3px; margin-right: 5px; transition: 0.2s; }
+        
+        .copy-btn { background: #555; }
         .copy-btn:hover { background: #777; }
         
+        .open-btn { background: #28a745; } /* Zielony dla Otwórz */
+        .open-btn:hover { background: #218838; }
+
         .option-box { margin: 20px 0; padding: 10px; border: 1px dashed #555; border-radius: 5px; display: inline-block; }
     </style>
 </head>
@@ -28,7 +37,8 @@
         
         <div class="option-box">
             <label style="cursor: pointer; color: #ddd; display: flex; align-items: center; gap: 10px;">
-                <input type="checkbox" id="stun-only" style="width: 20px; height: 20px;"> 
+                <!-- Domyślnie zaznaczone (checked) -->
+                <input type="checkbox" id="stun-only" style="width: 20px; height: 20px;" checked> 
                 <div style="text-align: left;">
                     <strong>🚀 Tryb Turbo (STUN Only)</strong><br>
                     <small style="color: #888;">Niższe opóźnienie (P2P), ale może nie działać na LTE/w firmach.</small>
@@ -37,7 +47,7 @@
         </div>
         <br>
 
-        <button onclick="createRoom()">+ Stwórz Nowy Pokój</button>
+        <button class="create-btn" onclick="createRoom()">+ Stwórz Nowy Pokój</button>
 
         <div id="links-area">
             <h3>Twoje linki:</h3>
@@ -45,33 +55,32 @@
             <div class="link-group">
                 <label>1. Link do OBS (Wklej jako Browser Source):</label>
                 <input type="text" id="obs-link" readonly>
-                <button class="copy-btn" onclick="copy('obs-link')">Kopiuj</button>
+                <button class="action-btn copy-btn" onclick="copy('obs-link')">📋 Kopiuj</button>
+                <!-- Tutaj zazwyczaj nie dajemy Otwórz, bo to idzie do OBS, ale można dodać w razie potrzeby -->
             </div>
 
             <div class="link-group">
                 <label>2. Panel Reżysera (Otwórz na telefonie/laptopie):</label>
                 <input type="text" id="director-link" readonly>
-                <button class="copy-btn" onclick="copy('director-link')">Kopiuj</button>
+                <button class="action-btn copy-btn" onclick="copy('director-link')">📋 Kopiuj</button>
+                <button class="action-btn open-btn" onclick="openLink('director-link')">↗ Otwórz</button>
             </div>
 
             <div class="link-group">
                 <label>3. Link dla Gości (Wyślij znajomym):</label>
                 <input type="text" id="guest-link" readonly>
-                <button class="copy-btn" onclick="copy('guest-link')">Kopiuj</button>
+                <button class="action-btn copy-btn" onclick="copy('guest-link')">📋 Kopiuj</button>
+                <button class="action-btn open-btn" onclick="openLink('guest-link')">↗ Otwórz</button>
             </div>
         </div>
     </div>
 
     <script>
         function createRoom() {
-            // Generujemy losowe ID pokoju
             const roomId = Math.random().toString(36).substring(2, 9);
-            
-            // Sprawdzamy opcję Turbo
             const isStunOnly = document.getElementById('stun-only').checked;
             const param = isStunOnly ? '&stunonly=1' : '';
 
-            // Pobieramy bazowy URL
             let baseUrl = window.location.href;
             if (baseUrl.endsWith('index.html')) {
                 baseUrl = baseUrl.replace('index.html', '');
@@ -80,12 +89,10 @@
                 baseUrl += '/';
             }
 
-            // Tworzymy linki
             const obsUrl = `${baseUrl}obs.html?room=${roomId}${param}`;
             const directorUrl = `${baseUrl}director.html?room=${roomId}${param}`;
             const guestUrl = `${baseUrl}guest.html?room=${roomId}${param}`;
 
-            // Wstawiamy do inputów
             document.getElementById('obs-link').value = obsUrl;
             document.getElementById('director-link').value = directorUrl;
             document.getElementById('guest-link').value = guestUrl;
@@ -97,7 +104,17 @@
             const copyText = document.getElementById(elementId);
             copyText.select();
             document.execCommand("copy");
-            alert("Skopiowano link!");
+            // alert("Skopiowano link!"); // Opcjonalnie można usunąć alert, żeby nie przeszkadzał
+        }
+
+        // Nowa funkcja otwierająca link w nowej karcie
+        function openLink(elementId) {
+            const url = document.getElementById(elementId).value;
+            if (url) {
+                window.open(url, '_blank');
+            } else {
+                alert("Najpierw wygeneruj pokój!");
+            }
         }
     </script>
 </body>
