@@ -60,8 +60,8 @@
             
             <label class="checkbox-group" title="Wymusza wysoki bitrate (6 Mbps)">
                 <input type="checkbox" id="high-bitrate" checked> 
-                <!-- ZMIANA TEKSTU TUTAJ -->
-                <span>Unlock Bitrate</span>
+                <!-- IKONKA PRZYWRÓCONA TUTAJ: -->
+                <span>🔥 Unlock Bitrate</span>
             </label>
         </div>
 
@@ -201,7 +201,7 @@
                 globalConn.send({ type: 'mic-status', muted: isMuted });
             });
 
-            // --- UNLOCK BITRATE (6 Mbps) ---
+            // UNLOCK BITRATE (6 Mbps)
             if(highBitrate) {
                 setTimeout(() => {
                     const pc = call.peerConnection;
@@ -209,8 +209,7 @@
                     if(sender) {
                         const params = sender.getParameters();
                         if (!params.encodings) params.encodings = [{}];
-                        // ZMIANA TUTAJ: 6000000 = 6 Mbps
-                        params.encodings[0].maxBitrate = 6000000; 
+                        params.encodings[0].maxBitrate = 6000000; // 6 Mbps
                         sender.setParameters(params)
                             .then(() => log("🔥 Bitrate odblokowany do 6 Mbps!", 'success'))
                             .catch(e => log("Błąd Bitrate Unlock: " + e, 'error'));
