@@ -9,7 +9,6 @@
         #video-container { width: 100%; height: 100%; transition: all 0.5s ease; position: relative; }
         .video-box { position: relative; overflow: hidden; border: 2px solid white; box-shadow: 0 0 15px rgba(0,0,0,0.7); background: #000; transition: all 0.5s ease; }
         video { width: 100%; height: 100%; object-fit: cover; display: block; }
-        
         .mute-icon { position: absolute; top: 10px; right: 10px; color: red; font-size: 24px; background: rgba(0,0,0,0.5); padding: 5px; border-radius: 50%; display: none; z-index: 20; }
         .label { position: absolute; bottom: 10px; left: 10px; background: rgba(0, 0, 0, 0.7); color: white; padding: 5px 15px; border-radius: 4px; font-size: 1.2rem; font-weight: bold; text-shadow: 1px 1px 2px black; border-left: 4px solid #00d2ff; z-index: 10; display: none; }
 
@@ -51,8 +50,6 @@
         const guests = {};       
         const heartbeats = {};   
         let directorConn = null; 
-        
-        // Pamięć podręczna do obliczania bitrate (poprzednie wartości bajtów)
         const statsCache = {};
 
         peer.on('open', (id) => console.log('OBS gotowy. ID: ' + id));
@@ -60,8 +57,6 @@
         // 1. ODBIÓR WIDEO
         peer.on('call', (call) => {
             call.answer();
-            
-            // Rejestrujemy call w obiekcie gościa, żeby mieć dostęp do peerConnection dla statystyk
             if(!guests[call.peer]) guests[call.peer] = { name: "Łączenie...", muted: false, conn: null };
             guests[call.peer].call = call;
 
@@ -97,18 +92,28 @@
                     sendGuestListToDirector();
                 }
                 if(data.type === 'layout') container.className = data.mode;
+                
+                // OBSŁUGA ODŚWIEŻANIA KAMERY
+                if(data.type === 'refresh-cam') {
+                    if(data.targetId === 'all') {
+                        // Odśwież wszystkich
+                        Object.keys(guests).forEach(id => performRefresh(id));
+                    } else {
+                        // Odśwież jednego
+                        performRefresh(data.targetId);
+                    }
+                }
+
                 if(data.type === 'remote-mute') {
                     if(guests[data.targetId] && guests[data.targetId].conn) {
                         guests[data.targetId].conn.send({ type: 'mute-cmd', state: data.state });
                     }
                 }
                 if(data.type === 'identify') {
-                    // Aktualizujemy istniejący wpis lub tworzymy nowy
                     if(!guests[conn.peer]) guests[conn.peer] = {};
                     guests[conn.peer].name = data.name || "Gość";
                     guests[conn.peer].muted = false;
                     guests[conn.peer].conn = conn;
-                    
                     updateLabel(conn.peer, data.name);
                     sendGuestListToDirector();
                 }
@@ -126,60 +131,76 @@
             conn.on('error', () => removeGuest(conn.peer));
         });
 
-        // 3. HEARTBEAT & STATYSTYKI (Pętla co 1 sekundę)
         setInterval(async () => {
             const now = Date.now();
             const statsReport = {};
-
             for (const peerId in guests) {
-                // A. Sprawdź puls
                 if (heartbeats[peerId] && (now - heartbeats[peerId] > 7000)) {
                     removeGuest(peerId);
                     continue;
                 }
-
-                // B. Pobierz statystyki WebRTC
                 const guest = guests[peerId];
                 if (guest.call && guest.call.peerConnection) {
                     try {
                         const stats = await guest.call.peerConnection.getStats();
                         let videoStats = null;
-
                         stats.forEach(report => {
-                            if (report.type === 'inbound-rtp' && report.kind === 'video') {
-                                videoStats = report;
-                            }
+                            if (report.type === 'inbound-rtp' && report.kind === 'video') videoStats = report;
                         });
-
                         if (videoStats) {
-                            // Obliczanie Bitrate
                             const bytes = videoStats.bytesReceived;
                             const prevBytes = statsCache[peerId] || 0;
-                            // (Różnica bajtów * 8 bitów) / 1 sekunda = bity na sekundę
-                            const bitrate = ((bytes - prevBytes) * 8) / 1000; // w kbps
+                            const bitrate = ((bytes - prevBytes) * 8) / 1000;
                             statsCache[peerId] = bytes;
-
                             statsReport[peerId] = {
-                                bitrate: Math.round(bitrate), // kbps
+                                bitrate: Math.round(bitrate),
                                 packetLoss: videoStats.packetsLost || 0,
                                 resolution: (videoStats.frameWidth && videoStats.frameHeight) ? `${videoStats.frameWidth}x${videoStats.frameHeight}` : 'N/A'
                             };
                         }
-                    } catch (e) { console.warn("Stats error", e); }
+                    } catch (e) {}
                 }
             }
-
-            // Wyślij raport do reżysera
             if(directorConn && directorConn.open && Object.keys(statsReport).length > 0) {
                 directorConn.send({ type: 'stats-update', stats: statsReport });
             }
-
         }, 1000);
+
+        // --- FUNKCJA ODŚWIEŻANIA (RESET BUFORA) ---
+        function performRefresh(id) {
+            const box = document.getElementById(`box-${id}`);
+            if(!box) return;
+
+            console.log(`Wykonuję twardy reset strumienia dla: ${id}`);
+            
+            const video = box.querySelector('video');
+            const audio = box.querySelector('audio');
+            
+            if(video && video.srcObject) {
+                const stream = video.srcObject; // Zapisz strumień
+                
+                // Odłącz
+                video.srcObject = null;
+                if(audio) audio.srcObject = null;
+                
+                // Poczekaj chwilę, żeby przeglądarka wyczyściła potok
+                setTimeout(() => {
+                    // Podłącz z powrotem
+                    video.srcObject = stream;
+                    if(audio) audio.srcObject = stream;
+                    
+                    video.play().catch(e => console.log(e));
+                    if(audio) audio.play().catch(e => console.log(e));
+                    
+                    console.log(`Strumień zresetowany dla: ${id}`);
+                }, 100); // 100ms przerwy wystarczy
+            }
+        }
 
         function addVideo(stream, id) {
             if(document.getElementById(`box-${id}`)) return;
             heartbeats[id] = Date.now();
-            statsCache[id] = 0; // Reset cache statystyk
+            statsCache[id] = 0;
 
             const box = document.createElement('div');
             box.className = 'video-box'; box.id = `box-${id}`;
@@ -205,8 +226,8 @@
             box.appendChild(audio);
             container.appendChild(box);
 
-            video.play().catch(e => console.error("Wideo Autoplay error:", e));
-            audio.play().catch(e => console.warn("Audio Autoplay wymaga interakcji w OBS!", e));
+            video.play().catch(e => console.error(e));
+            audio.play().catch(e => console.warn(e));
         }
 
         function removeGuest(id) {
