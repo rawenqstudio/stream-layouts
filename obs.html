@@ -6,30 +6,14 @@
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; font-family: 'Segoe UI', sans-serif; }
-        
         #video-container { width: 100%; height: 100%; transition: all 0.5s ease; position: relative; }
-        
-        .video-box { 
-            position: relative; overflow: hidden; border: 2px solid white; 
-            box-shadow: 0 0 15px rgba(0,0,0,0.7); background: #000; transition: all 0.5s ease; 
-        }
-        
+        .video-box { position: relative; overflow: hidden; border: 2px solid white; box-shadow: 0 0 15px rgba(0,0,0,0.7); background: #000; transition: all 0.5s ease; }
         video { width: 100%; height: 100%; object-fit: cover; display: block; }
         
-        .mute-icon {
-            position: absolute; top: 10px; right: 10px; color: red; font-size: 24px;
-            background: rgba(0,0,0,0.5); padding: 5px; border-radius: 50%;
-            display: none; z-index: 20;
-        }
+        .mute-icon { position: absolute; top: 10px; right: 10px; color: red; font-size: 24px; background: rgba(0,0,0,0.5); padding: 5px; border-radius: 50%; display: none; z-index: 20; }
+        .label { position: absolute; bottom: 10px; left: 10px; background: rgba(0, 0, 0, 0.7); color: white; padding: 5px 15px; border-radius: 4px; font-size: 1.2rem; font-weight: bold; text-shadow: 1px 1px 2px black; border-left: 4px solid #00d2ff; z-index: 10; display: none; }
 
-        .label {
-            position: absolute; bottom: 10px; left: 10px; background: rgba(0, 0, 0, 0.7); 
-            color: white; padding: 5px 15px; border-radius: 4px; font-size: 1.2rem; 
-            font-weight: bold; text-shadow: 1px 1px 2px black; border-left: 4px solid #00d2ff; 
-            z-index: 10; display: none;
-        }
-
-        /* UKŁADY KAMER */
+        /* UKŁADY */
         .layout-grid { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 15px; padding: 20px; box-sizing: border-box; }
         .layout-grid .video-box { width: 45%; height: 45%; } 
         .layout-sidebar-right { display: flex; flex-direction: column; justify-content: center; align-items: flex-end; padding-right: 20px; height: 100vh; }
@@ -51,9 +35,8 @@
         const urlParams = new URLSearchParams(window.location.search);
         const myID = urlParams.get('room') || 'test-room';
         const useStunOnly = urlParams.get('stunonly');
-        const useULL = urlParams.get('ull'); // Sprawdzamy opcję Ultra Low Latency
+        const useULL = urlParams.get('ull'); 
 
-        // Konfiguracja serwerów
         const selectedConfig = useStunOnly ? [ { urls: "stun:stun.l.google.com:19302" } ] : [
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "turn:openrelay.metered.ca:80?transport=udp", username: "openrelayproject", credential: "openrelayproject" },
@@ -68,31 +51,34 @@
         const guests = {};       
         const heartbeats = {};   
         let directorConn = null; 
+        
+        // Pamięć podręczna do obliczania bitrate (poprzednie wartości bajtów)
+        const statsCache = {};
 
         peer.on('open', (id) => console.log('OBS gotowy. ID: ' + id));
 
-        // --- 1. ODBIÓR WIDEO ---
+        // 1. ODBIÓR WIDEO
         peer.on('call', (call) => {
             call.answer();
             
-            // --- LOGIKA ULTRA LOW LATENCY ---
+            // Rejestrujemy call w obiekcie gościa, żeby mieć dostęp do peerConnection dla statystyk
+            if(!guests[call.peer]) guests[call.peer] = { name: "Łączenie...", muted: false, conn: null };
+            guests[call.peer].call = call;
+
             if (useULL) {
                 setTimeout(() => {
                     const pc = call.peerConnection;
                     if (pc && pc.getReceivers) {
                         pc.getReceivers().forEach(receiver => {
                             if (receiver.track && receiver.track.kind === 'video' && 'playoutDelayHint' in receiver) {
-                                receiver.playoutDelayHint = 0; // ZERO BUFORA
-                                console.log(`⚡ ULL włączone dla: ${call.peer}`);
+                                receiver.playoutDelayHint = 0;
                             }
                         });
                     }
                 }, 500);
             }
-            // --------------------------------
 
             call.on('stream', (stream) => addVideo(stream, call.peer));
-            
             call.on('close', () => removeGuest(call.peer));
             call.on('error', () => removeGuest(call.peer));
             
@@ -103,7 +89,7 @@
             };
         });
 
-        // --- 2. ODBIÓR DANYCH ---
+        // 2. ODBIÓR DANYCH
         peer.on('connection', (conn) => {
             conn.on('data', (data) => {
                 if(data.type === 'director-hello') {
@@ -117,7 +103,12 @@
                     }
                 }
                 if(data.type === 'identify') {
-                    guests[conn.peer] = { name: data.name || "Gość", muted: false, conn: conn };
+                    // Aktualizujemy istniejący wpis lub tworzymy nowy
+                    if(!guests[conn.peer]) guests[conn.peer] = {};
+                    guests[conn.peer].name = data.name || "Gość";
+                    guests[conn.peer].muted = false;
+                    guests[conn.peer].conn = conn;
+                    
                     updateLabel(conn.peer, data.name);
                     sendGuestListToDirector();
                 }
@@ -135,18 +126,60 @@
             conn.on('error', () => removeGuest(conn.peer));
         });
 
-        // --- 3. HEARTBEAT ---
-        setInterval(() => {
+        // 3. HEARTBEAT & STATYSTYKI (Pętla co 1 sekundę)
+        setInterval(async () => {
             const now = Date.now();
-            for (const peerId in heartbeats) {
-                if (now - heartbeats[peerId] > 7000) removeGuest(peerId);
-            }
-        }, 3000);
+            const statsReport = {};
 
-        // --- POMOCNICZE ---
+            for (const peerId in guests) {
+                // A. Sprawdź puls
+                if (heartbeats[peerId] && (now - heartbeats[peerId] > 7000)) {
+                    removeGuest(peerId);
+                    continue;
+                }
+
+                // B. Pobierz statystyki WebRTC
+                const guest = guests[peerId];
+                if (guest.call && guest.call.peerConnection) {
+                    try {
+                        const stats = await guest.call.peerConnection.getStats();
+                        let videoStats = null;
+
+                        stats.forEach(report => {
+                            if (report.type === 'inbound-rtp' && report.kind === 'video') {
+                                videoStats = report;
+                            }
+                        });
+
+                        if (videoStats) {
+                            // Obliczanie Bitrate
+                            const bytes = videoStats.bytesReceived;
+                            const prevBytes = statsCache[peerId] || 0;
+                            // (Różnica bajtów * 8 bitów) / 1 sekunda = bity na sekundę
+                            const bitrate = ((bytes - prevBytes) * 8) / 1000; // w kbps
+                            statsCache[peerId] = bytes;
+
+                            statsReport[peerId] = {
+                                bitrate: Math.round(bitrate), // kbps
+                                packetLoss: videoStats.packetsLost || 0,
+                                resolution: (videoStats.frameWidth && videoStats.frameHeight) ? `${videoStats.frameWidth}x${videoStats.frameHeight}` : 'N/A'
+                            };
+                        }
+                    } catch (e) { console.warn("Stats error", e); }
+                }
+            }
+
+            // Wyślij raport do reżysera
+            if(directorConn && directorConn.open && Object.keys(statsReport).length > 0) {
+                directorConn.send({ type: 'stats-update', stats: statsReport });
+            }
+
+        }, 1000);
+
         function addVideo(stream, id) {
             if(document.getElementById(`box-${id}`)) return;
             heartbeats[id] = Date.now();
+            statsCache[id] = 0; // Reset cache statystyk
 
             const box = document.createElement('div');
             box.className = 'video-box'; box.id = `box-${id}`;
@@ -170,7 +203,6 @@
             box.appendChild(label);
             box.appendChild(muteIcon);
             box.appendChild(audio);
-            
             container.appendChild(box);
 
             video.play().catch(e => console.error("Wideo Autoplay error:", e));
@@ -180,7 +212,7 @@
         function removeGuest(id) {
             if(document.getElementById(`box-${id}`)) {
                 document.getElementById(`box-${id}`).remove();
-                delete guests[id]; delete heartbeats[id];
+                delete guests[id]; delete heartbeats[id]; delete statsCache[id];
                 sendGuestListToDirector();
             }
         }
