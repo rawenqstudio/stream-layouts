@@ -1,131 +1,253 @@
 <!DOCTYPE html>
 <html lang="pl">
-<head>
-    <meta charset="UTF-8">
+  <head>
+    <meta charset="UTF-8" />
     <title>StreamLayouts - Generator Pokoi</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: white; text-align: center; padding-top: 50px; margin: 0; }
-        .container { max-width: 600px; margin: 0 auto; background: #2a2a2a; padding: 40px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        h1 { margin-bottom: 30px; color: #00d2ff; }
-        
-        .create-btn { background: linear-gradient(45deg, #00d2ff, #3a7bd5); border: none; padding: 15px 30px; color: white; font-size: 1.2em; border-radius: 30px; cursor: pointer; transition: transform 0.2s; }
-        .create-btn:hover { transform: scale(1.05); }
-        
-        #links-area { display: none; margin-top: 30px; text-align: left; }
-        .link-group { margin-bottom: 20px; background: #333; padding: 15px; border-radius: 8px; }
-        .link-group label { display: block; color: #aaa; font-size: 0.9em; margin-bottom: 5px; }
-        .link-group input { width: 95%; padding: 10px; background: #111; border: 1px solid #444; color: #fff; border-radius: 5px; display: block; margin-bottom: 10px; }
-        
-        .action-btn { font-size: 0.9em; padding: 8px 15px; border: none; color: white; cursor: pointer; border-radius: 3px; margin-right: 5px; transition: 0.2s; }
-        .copy-btn { background: #555; } .copy-btn:hover { background: #777; }
-        .open-btn { background: #28a745; } .open-btn:hover { background: #218838; }
+      body {
+        font-family: "Segoe UI", sans-serif;
+        background: #1a1a1a;
+        color: white;
+        text-align: center;
+        padding-top: 50px;
+        margin: 0;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        background: #2a2a2a;
+        padding: 40px;
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      }
+      h1 {
+        margin-bottom: 30px;
+        color: #00d2ff;
+      }
 
-        .option-box { margin: 10px 0; padding: 10px; border: 1px dashed #555; border-radius: 5px; display: block; text-align: left; }
-        .checkbox-label { cursor: pointer; color: #ddd; display: flex; align-items: center; gap: 10px; }
-        
-        /* Stopka */
-        .footer-credits { position: fixed; bottom: 15px; right: 20px; color: #666; font-size: 0.85em; font-family: monospace; user-select: none; pointer-events: none; }
+      .create-btn {
+        background: linear-gradient(45deg, #00d2ff, #3a7bd5);
+        border: none;
+        padding: 15px 30px;
+        color: white;
+        font-size: 1.2em;
+        border-radius: 30px;
+        cursor: pointer;
+        transition: transform 0.2s;
+      }
+      .create-btn:hover {
+        transform: scale(1.05);
+      }
+
+      #links-area {
+        display: none;
+        margin-top: 30px;
+        text-align: left;
+      }
+      .link-group {
+        margin-bottom: 20px;
+        background: #333;
+        padding: 15px;
+        border-radius: 8px;
+      }
+      .link-group label {
+        display: block;
+        color: #aaa;
+        font-size: 0.9em;
+        margin-bottom: 5px;
+      }
+      .link-group input {
+        width: 95%;
+        padding: 10px;
+        background: #111;
+        border: 1px solid #444;
+        color: #fff;
+        border-radius: 5px;
+        display: block;
+        margin-bottom: 10px;
+      }
+
+      .action-btn {
+        font-size: 0.9em;
+        padding: 8px 15px;
+        border: none;
+        color: white;
+        cursor: pointer;
+        border-radius: 3px;
+        margin-right: 5px;
+        transition: 0.2s;
+      }
+      .copy-btn {
+        background: #555;
+      }
+      .copy-btn:hover {
+        background: #777;
+      }
+      .open-btn {
+        background: #28a745;
+      }
+      .open-btn:hover {
+        background: #218838;
+      }
+
+      .option-box {
+        margin: 10px 0;
+        padding: 10px;
+        border: 1px dashed #555;
+        border-radius: 5px;
+        display: block;
+        text-align: left;
+      }
+      .checkbox-label {
+        cursor: pointer;
+        color: #ddd;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      /* Stopka */
+      .footer-credits {
+        position: fixed;
+        bottom: 15px;
+        right: 20px;
+        color: #666;
+        font-size: 0.85em;
+        font-family: monospace;
+        user-select: none;
+        pointer-events: none;
+      }
     </style>
-</head>
-<body>
-
+  </head>
+  <body>
     <div class="container">
-        <h1>🎥 Stream Layout Generator</h1>
-        <p>Stwórz pokój, wyślij linki i steruj układem kamer w OBS.</p>
-        
-        <!-- OPCJA 1: STUN ONLY -->
-        <div class="option-box">
-            <label class="checkbox-label">
-                <input type="checkbox" id="stun-only" style="width: 20px; height: 20px;" checked> 
-                <div>
-                    <strong>🚀 Tryb Turbo (STUN Only)</strong><br>
-                    <small style="color: #888;">Niższe opóźnienie (P2P), ale może nie działać na LTE.</small>
-                </div>
-            </label>
+      <h1>🎥 Stream Layout Generator</h1>
+      <p>Stwórz pokój, wyślij linki i steruj układem kamer w OBS.</p>
+
+      <!-- OPCJA 1: STUN ONLY -->
+      <div class="option-box">
+        <label class="checkbox-label">
+          <input
+            type="checkbox"
+            id="stun-only"
+            style="width: 20px; height: 20px"
+            checked
+          />
+          <div>
+            <strong>🚀 Tryb Turbo (STUN Only)</strong><br />
+            <small style="color: #888"
+              >Niższe opóźnienie (P2P), ale może nie działać na LTE.</small
+            >
+          </div>
+        </label>
+      </div>
+
+      <!-- OPCJA 2: ULTRA LOW LATENCY (NOWOŚĆ) -->
+      <div class="option-box" style="border-color: #d63384">
+        <label class="checkbox-label">
+          <input
+            type="checkbox"
+            id="ull-mode"
+            style="width: 20px; height: 20px"
+            checked
+          />
+          <div>
+            <strong>⚡ Ultra Low Latency (Brak bufora)</strong><br />
+            <small style="color: #888"
+              >Wyłącza wygładzanie ruchu. Zero opóźnienia, ale ryzyko
+              mikro-acięć.</small
+            >
+          </div>
+        </label>
+      </div>
+      <br />
+
+      <button class="create-btn" onclick="createRoom()">
+        + Stwórz Nowy Pokój
+      </button>
+
+      <div id="links-area">
+        <h3>Twoje linki:</h3>
+
+        <div class="link-group">
+          <label>1. Link do OBS (Wklej jako Browser Source):</label>
+          <input type="text" id="obs-link" readonly />
+          <button class="action-btn copy-btn" onclick="copy('obs-link')">
+            📋 Kopiuj
+          </button>
         </div>
 
-        <!-- OPCJA 2: ULTRA LOW LATENCY (NOWOŚĆ) -->
-        <div class="option-box" style="border-color: #d63384;">
-            <label class="checkbox-label">
-                <input type="checkbox" id="ull-mode" style="width: 20px; height: 20px;" checked> 
-                <div>
-                    <strong>⚡ Ultra Low Latency (Brak bufora)</strong><br>
-                    <small style="color: #888;">Wyłącza wygładzanie ruchu. Zero opóźnienia, ale ryzyko mikro-acięć.</small>
-                </div>
-            </label>
+        <div class="link-group">
+          <label>2. Panel Reżysera (Otwórz na telefonie/laptopie):</label>
+          <input type="text" id="director-link" readonly />
+          <button class="action-btn copy-btn" onclick="copy('director-link')">
+            📋 Kopiuj
+          </button>
+          <button
+            class="action-btn open-btn"
+            onclick="openLink('director-link')"
+          >
+            ↗ Otwórz
+          </button>
         </div>
-        <br>
 
-        <button class="create-btn" onclick="createRoom()">+ Stwórz Nowy Pokój</button>
-
-        <div id="links-area">
-            <h3>Twoje linki:</h3>
-
-            <div class="link-group">
-                <label>1. Link do OBS (Wklej jako Browser Source):</label>
-                <input type="text" id="obs-link" readonly>
-                <button class="action-btn copy-btn" onclick="copy('obs-link')">📋 Kopiuj</button>
-            </div>
-
-            <div class="link-group">
-                <label>2. Panel Reżysera (Otwórz na telefonie/laptopie):</label>
-                <input type="text" id="director-link" readonly>
-                <button class="action-btn copy-btn" onclick="copy('director-link')">📋 Kopiuj</button>
-                <button class="action-btn open-btn" onclick="openLink('director-link')">↗ Otwórz</button>
-            </div>
-
-            <div class="link-group">
-                <label>3. Link dla Gości (Wyślij znajomym):</label>
-                <input type="text" id="guest-link" readonly>
-                <button class="action-btn copy-btn" onclick="copy('guest-link')">📋 Kopiuj</button>
-                <button class="action-btn open-btn" onclick="openLink('guest-link')">↗ Otwórz</button>
-            </div>
+        <div class="link-group">
+          <label>3. Link dla Gości (Wyślij znajomym):</label>
+          <input type="text" id="guest-link" readonly />
+          <button class="action-btn copy-btn" onclick="copy('guest-link')">
+            📋 Kopiuj
+          </button>
+          <button class="action-btn open-btn" onclick="openLink('guest-link')">
+            ↗ Otwórz
+          </button>
         </div>
+      </div>
     </div>
 
     <div class="footer-credits">from xrawenq for Goodiez</div>
 
     <script>
-        function createRoom() {
-            const roomId = Math.random().toString(36).substring(2, 9);
-            
-            // Pobieramy stan obu checkboxów
-            const isStunOnly = document.getElementById('stun-only').checked;
-            const isULL = document.getElementById('ull-mode').checked;
+      function createRoom() {
+        const roomId = Math.random().toString(36).substring(2, 9);
 
-            // Budujemy parametry URL
-            let params = `?room=${roomId}`;
-            if (isStunOnly) params += '&stunonly=1';
-            if (isULL) params += '&ull=1'; // Parametr dla OBS
+        // Pobieramy stan obu checkboxów
+        const isStunOnly = document.getElementById("stun-only").checked;
+        const isULL = document.getElementById("ull-mode").checked;
 
-            let baseUrl = window.location.href;
-            if (baseUrl.endsWith('index.html')) baseUrl = baseUrl.replace('index.html', '');
-            if (!baseUrl.endsWith('/')) baseUrl += '/';
+        // Budujemy parametry URL
+        let params = `?room=${roomId}`;
+        if (isStunOnly) params += "&stunonly=1";
+        if (isULL) params += "&ull=1"; // Parametr dla OBS
 
-            // Generujemy linki
-            // UWAGA: &ull=1 jest potrzebny tylko w OBS, ale dla prostoty kodu możemy dodać wszędzie (inne pliki go zignorują)
-            const obsUrl = `${baseUrl}obs.html${params}`;
-            const directorUrl = `${baseUrl}director.html${params}`;
-            const guestUrl = `${baseUrl}guest.html${params}`;
+        let baseUrl = window.location.href;
+        if (baseUrl.endsWith("index.html"))
+          baseUrl = baseUrl.replace("index.html", "");
+        if (!baseUrl.endsWith("/")) baseUrl += "/";
 
-            document.getElementById('obs-link').value = obsUrl;
-            document.getElementById('director-link').value = directorUrl;
-            document.getElementById('guest-link').value = guestUrl;
+        // Generujemy linki
+        // UWAGA: &ull=1 jest potrzebny tylko w OBS, ale dla prostoty kodu możemy dodać wszędzie (inne pliki go zignorują)
+        const obsUrl = `${baseUrl}obs.html${params}`;
+        const directorUrl = `${baseUrl}director.html${params}`;
+        const guestUrl = `${baseUrl}guest.html${params}`;
 
-            document.getElementById('links-area').style.display = 'block';
-        }
+        document.getElementById("obs-link").value = obsUrl;
+        document.getElementById("director-link").value = directorUrl;
+        document.getElementById("guest-link").value = guestUrl;
 
-        function copy(elementId) {
-            const copyText = document.getElementById(elementId);
-            copyText.select();
-            document.execCommand("copy");
-        }
+        document.getElementById("links-area").style.display = "block";
+      }
 
-        function openLink(elementId) {
-            const url = document.getElementById(elementId).value;
-            if (url) window.open(url, '_blank');
-            else alert("Najpierw wygeneruj pokój!");
-        }
+      function copy(elementId) {
+        const copyText = document.getElementById(elementId);
+        copyText.select();
+        document.execCommand("copy");
+      }
+
+      function openLink(elementId) {
+        const url = document.getElementById(elementId).value;
+        if (url) window.open(url, "_blank");
+        else alert("Najpierw wygeneruj pokój!");
+      }
     </script>
-</body>
+  </body>
 </html>
