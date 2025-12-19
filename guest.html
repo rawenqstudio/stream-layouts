@@ -289,18 +289,16 @@
         const videoSource = videoSelect.value;
         const audioSource = audioSelect.value;
 
-        // --- USUNIĘTO LIMIT FPS (Powrót do default/max kamery) ---
+        // --- USUNIĘTO FILTRY AUDIO I LIMIT FPS ---
         const constraints = {
           video: {
             deviceId: videoSource ? { exact: videoSource } : undefined,
             width: { ideal: 1920 },
             height: { ideal: 1080 },
-            // Brak frameRate: max 30 -> kamera może dać 60 FPS
           },
           audio: {
             deviceId: audioSource ? { exact: audioSource } : undefined,
-            echoCancellation: true,
-            noiseSuppression: true,
+            // Usunięto: echoCancellation, noiseSuppression
           },
         };
         try {
@@ -344,7 +342,7 @@
 
         log(`Dzwonię do OBS...`);
 
-        // --- ZACHOWANO CONTENT HINT (Płynność) ---
+        // CONTENT HINT ZACHOWANY (Płynność)
         const videoTrack = localStream.getVideoTracks()[0];
         if (videoTrack && "contentHint" in videoTrack) {
           videoTrack.contentHint = "motion";
@@ -364,7 +362,7 @@
           globalConn.send({ type: "mic-status", muted: isMuted });
         });
 
-        // --- PRZYWRÓCONO 6 MBPS ---
+        // BITRATE 6 MBPS (20M -> 6M -> 4M -> i teraz powrót do 6M)
         if (highBitrate) {
           setTimeout(() => {
             const pc = call.peerConnection;
@@ -374,8 +372,7 @@
             if (sender) {
               const params = sender.getParameters();
               if (!params.encodings) params.encodings = [{}];
-              // 6 Mbps = 6,000,000 (Wysoka jakość)
-              params.encodings[0].maxBitrate = 6000000;
+              params.encodings[0].maxBitrate = 6000000; // 6 Mbps
               sender
                 .setParameters(params)
                 .then(() => log("🔥 Bitrate odblokowany (6 Mbps)!", "success"))
