@@ -24,7 +24,6 @@
         color: white;
         transition: 0.2s;
       }
-
       .btn-layout {
         background: #007bff;
         width: 45%;
@@ -35,7 +34,6 @@
       .btn-layout:hover {
         background: #0056b3;
       }
-
       .btn-tool {
         width: 93%;
         padding: 10px;
@@ -49,7 +47,12 @@
       .btn-refresh-all:hover {
         background: #e68900;
       }
-
+      .btn-sync {
+        background: #6610f2;
+      }
+      .btn-sync:hover {
+        background: #520dc2;
+      }
       .btn-toggle-off {
         background: #17a2b8;
       }
@@ -117,12 +120,10 @@
         color: #ff4444;
         font-weight: bold;
       }
-
       .guest-actions {
         display: flex;
         gap: 5px;
-      } /* Zmniejszyłem odstęp, bo więcej przycisków */
-
+      }
       .btn-icon {
         width: 40px;
         height: 40px;
@@ -144,12 +145,20 @@
       .btn-refresh:hover {
         background: #e68900;
       }
-      .btn-mirror {
+      /* Kolory dla Lustra */
+      .mirror-off {
         background: #6c757d;
       }
-      .btn-mirror:hover {
+      .mirror-off:hover {
         background: #5a6268;
-      } /* Szary przycisk lustra */
+      }
+      .mirror-on {
+        background: #007bff;
+        border: 2px solid white;
+      }
+      .mirror-on:hover {
+        background: #0056b3;
+      }
     </style>
   </head>
   <body>
@@ -232,7 +241,10 @@
           onclick="refreshCam('all')"
           style="margin-top: 20px"
         >
-          🔄 Odśwież Wszystkie bufory (Fix Lag)
+          🔄 Odśwież Bufory (Fix Lag)
+        </button>
+        <button class="btn-tool btn-sync" onclick="syncGuestsWithOBS()">
+          📡 Wymuś połączenie z nowym OBS
         </button>
 
         <h2>🎤 Zarządzanie Gośćmi:</h2>
@@ -245,6 +257,9 @@
     <script>
       const urlParams = new URLSearchParams(window.location.search);
       const useStunOnly = urlParams.get("stunonly");
+      const isMulti = urlParams.get("multi");
+      const roomID = urlParams.get("room");
+
       const selectedConfig = useStunOnly
         ? [{ urls: "stun:stun.l.google.com:19302" }]
         : [
@@ -261,17 +276,34 @@
             },
           ];
 
-      const peer = new Peer(undefined, {
+      const peer = new Peer(isMulti ? roomID : undefined, {
         config: { iceServers: selectedConfig },
       });
-      let conn = null;
+
+      let conn = null; // Standard Mode
+      const obsClients = []; // Multi
+      const guestConnections = [];
+      const multiGuestsState = {};
+
       let labelsVisible = false;
       let iconsVisible = false;
 
       window.onload = function () {
-        const roomID = urlParams.get("room");
-        if (roomID) {
-          document.getElementById("target-id").value = roomID;
+        if (!roomID) {
+          document.getElementById("status-msg").innerText =
+            "BŁĄD: Brak ID w linku.";
+          return;
+        }
+        document.getElementById("target-id").value = roomID;
+
+        if (isMulti) {
+          document.getElementById("status-msg").innerText =
+            "📡 Tryb Multi: SERWER AKTYWNY";
+          document.getElementById("control-panel").style.display = "block";
+          peer.on("connection", (connection) =>
+            handleIncomingConnection(connection)
+          );
+        } else {
           document.getElementById("status-msg").innerText = "Szukam OBS...";
           setTimeout(connectToOBS, 1000);
         }
@@ -280,72 +312,174 @@
       function connectToOBS() {
         const targetId = document.getElementById("target-id").value;
         conn = peer.connect(targetId);
-
         conn.on("open", () => {
           document.getElementById("status-msg").innerText =
-            "✅ POŁĄCZONO Z OBS";
+            "✅ POŁĄCZONO Z OBS (Standard)";
           document.getElementById("status-msg").style.color = "#00ff00";
           document.getElementById("control-panel").style.display = "block";
           conn.send({ type: "director-hello" });
         });
-
-        conn.on("data", (data) => {
-          if (data.type === "guest-list") renderGuestList(data.list);
-          if (data.type === "stats-update") updateStats(data.stats);
-        });
+        conn.on("data", (data) => handleData(data));
         conn.on("error", (err) => alert("Błąd: " + err));
       }
 
-      function sendLayout(layoutName) {
-        if (conn && conn.open) conn.send({ type: "layout", mode: layoutName });
+      function handleIncomingConnection(connection) {
+        connection.on("open", () =>
+          console.log("Połączenie:", connection.peer)
+        );
+        connection.on("data", (data) => {
+          if (data.type === "register-obs") {
+            obsClients.push(connection);
+            updateStatusMsg();
+            connection.send({ type: "toggle-labels", show: labelsVisible });
+            connection.send({ type: "toggle-icons", show: iconsVisible });
+            connection.send({ type: "layout", mode: "layout-grid" });
+          }
+          if (data.type === "get-obs-list") {
+            if (!guestConnections.includes(connection))
+              guestConnections.push(connection);
+            const obsIds = obsClients.map((c) => c.peer);
+            connection.send({ type: "obs-list", targets: obsIds });
+          }
+          handleData(data, connection);
+        });
+        connection.on("close", () => {
+          let idx = obsClients.indexOf(connection);
+          if (idx > -1) obsClients.splice(idx, 1);
+          idx = guestConnections.indexOf(connection);
+          if (idx > -1) guestConnections.splice(idx, 1);
+          if (multiGuestsState[connection.peer]) {
+            delete multiGuestsState[connection.peer];
+            refreshMultiModeUI();
+          }
+          updateStatusMsg();
+        });
       }
 
+      function updateStatusMsg() {
+        document.getElementById(
+          "status-msg"
+        ).innerText = `✅ OBS: ${obsClients.length} | Gości: ${guestConnections.length}`;
+        document.getElementById("status-msg").style.color = "#00ff00";
+      }
+
+      function handleData(data, sourceConn) {
+        // STANDARD
+        if (data.type === "guest-list" && !isMulti) renderGuestList(data.list);
+        if (data.type === "stats-update") updateStats(data.stats);
+
+        // MULTI
+        if (isMulti) {
+          if (data.type === "identify" && sourceConn) {
+            if (!guestConnections.includes(sourceConn))
+              guestConnections.push(sourceConn);
+            multiGuestsState[sourceConn.peer] = {
+              id: sourceConn.peer,
+              name: data.name || "Gość",
+              muted: false,
+              mirrored: false, // Domyślnie
+              conn: sourceConn,
+            };
+            refreshMultiModeUI();
+            updateStatusMsg();
+          }
+          if (data.type === "mic-status" && sourceConn) {
+            if (multiGuestsState[sourceConn.peer]) {
+              multiGuestsState[sourceConn.peer].muted = data.muted;
+              refreshMultiModeUI();
+              obsClients.forEach((c) => {
+                if (c.open)
+                  c.send({
+                    type: "mic-status",
+                    peer: sourceConn.peer,
+                    muted: data.muted,
+                  });
+              });
+            }
+          }
+        }
+      }
+
+      function refreshMultiModeUI() {
+        const list = Object.values(multiGuestsState).map((g) => ({
+          id: g.id,
+          name: g.name,
+          muted: g.muted,
+          mirrored: g.mirrored,
+        }));
+        renderGuestList(list);
+      }
+
+      function broadcastCommand(cmd) {
+        if (isMulti)
+          obsClients.forEach((c) => {
+            if (c.open) c.send(cmd);
+          });
+        else if (conn && conn.open) conn.send(cmd);
+      }
+
+      function syncGuestsWithOBS() {
+        if (!isMulti) {
+          alert("Tylko Multi!");
+          return;
+        }
+        const btn = document.querySelector(".btn-sync");
+        btn.innerText = "⏳ Synchronizacja...";
+        guestConnections.forEach((g) => {
+          if (g.open) g.send({ type: "force-sync" });
+        });
+        setTimeout(() => {
+          btn.innerText = "📡 Wymuś połączenie z nowym OBS";
+        }, 1000);
+      }
+
+      function sendLayout(layoutName) {
+        broadcastCommand({ type: "layout", mode: layoutName });
+      }
       function toggleGuestMic(id, currentMutedState) {
-        if (conn && conn.open)
-          conn.send({
+        if (isMulti) {
+          const guest = multiGuestsState[id];
+          if (guest && guest.conn && guest.conn.open)
+            guest.conn.send({ type: "mute-cmd", state: !currentMutedState });
+        } else {
+          broadcastCommand({
             type: "remote-mute",
             targetId: id,
             state: !currentMutedState,
           });
-      }
-
-      function refreshCam(id) {
-        if (conn && conn.open) conn.send({ type: "refresh-cam", targetId: id });
-      }
-
-      // --- NOWA FUNKCJA: Przełączanie lustra ---
-      function toggleMirror(id) {
-        if (conn && conn.open) {
-          conn.send({ type: "toggle-mirror", targetId: id });
         }
+      }
+      function refreshCam(id) {
+        broadcastCommand({ type: "refresh-cam", targetId: id });
       }
 
       function toggleLabels() {
-        if (conn && conn.open) {
-          labelsVisible = !labelsVisible;
-          conn.send({ type: "toggle-labels", show: labelsVisible });
-          const btn = document.getElementById("btn-labels");
-          btn.innerText = labelsVisible
-            ? "🔤 Podpisy: WIDOCZNE"
-            : "🔤 Podpisy: UKRYTE";
-          btn.className = labelsVisible
-            ? "btn-tool btn-toggle-on"
-            : "btn-tool btn-toggle-off";
-        }
+        labelsVisible = !labelsVisible;
+        broadcastCommand({ type: "toggle-labels", show: labelsVisible });
+        updateToolBtn("btn-labels", labelsVisible, "🔤 Podpisy");
+      }
+      function toggleIcons() {
+        iconsVisible = !iconsVisible;
+        broadcastCommand({ type: "toggle-icons", show: iconsVisible });
+        updateToolBtn("btn-icons", iconsVisible, "🔇 Ikony Mute");
+      }
+      function updateToolBtn(id, state, text) {
+        const btn = document.getElementById(id);
+        btn.innerText = state ? `${text}: WIDOCZNE` : `${text}: UKRYTE`;
+        btn.className = state
+          ? "btn-tool btn-toggle-on"
+          : "btn-tool btn-toggle-off";
       }
 
-      function toggleIcons() {
-        if (conn && conn.open) {
-          iconsVisible = !iconsVisible;
-          conn.send({ type: "toggle-icons", show: iconsVisible });
-          const btn = document.getElementById("btn-icons");
-          btn.innerText = iconsVisible
-            ? "🔇 Ikony Mute: WIDOCZNE"
-            : "🔇 Ikony Mute: UKRYTE";
-          btn.className = iconsVisible
-            ? "btn-tool btn-toggle-on"
-            : "btn-tool btn-toggle-off";
+      // --- POPRAWIONA FUNKCJA LUSTRA ---
+      function toggleMirror(id) {
+        // 1. Zmień stan lokalnie (dla Multi)
+        if (isMulti && multiGuestsState[id]) {
+          multiGuestsState[id].mirrored = !multiGuestsState[id].mirrored;
+          refreshMultiModeUI();
         }
+        // 2. Wyślij komendę do OBS (to tam odbywa się obrót)
+        broadcastCommand({ type: "toggle-mirror", targetId: id });
       }
 
       function renderGuestList(list) {
@@ -365,14 +499,17 @@
           const micIcon = guest.muted ? "🔇" : "🎤";
           const statusText = guest.muted ? "(Wyciszony)" : "";
 
+          // Styl przycisku Lustra
+          const mirrorClass = guest.mirrored ? "mirror-on" : "mirror-off";
+
           item.innerHTML = `
                     <div class="guest-info">
                         <span class="guest-name">${guest.name} <small style="font-weight:normal; font-size:0.7em">${statusText}</small></span>
                         <span id="stats-${guest.id}" class="guest-stats">Czekam na dane...</span>
                     </div>
                     <div class="guest-actions">
-                        <button class="btn-icon btn-mirror" onclick="toggleMirror('${guest.id}')" title="Lustrzane odbicie">🪞</button>
-                        <button class="btn-icon btn-refresh" onclick="refreshCam('${guest.id}')" title="Odśwież (Napraw opóźnienie)">🔄</button>
+                        <button class="btn-icon ${mirrorClass}" onclick="toggleMirror('${guest.id}')" title="Lustrzane odbicie">🪞</button>
+                        <button class="btn-icon btn-refresh" onclick="refreshCam('${guest.id}')" title="Odśwież">🔄</button>
                         <button class="btn-icon btn-mic ${micClass}" onclick="toggleGuestMic('${guest.id}', ${guest.muted})" title="Wycisz/Odcisz">
                             ${micIcon}
                         </button>

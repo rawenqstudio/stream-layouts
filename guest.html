@@ -25,7 +25,6 @@
         margin-top: 0;
         color: #00d2ff;
       }
-
       .video-wrapper {
         position: relative;
         width: 100%;
@@ -36,15 +35,12 @@
         margin-bottom: 20px;
         border: 2px solid #555;
       }
-
-      /* ZMIANA TUTAJ: Dodano transform: scaleX(-1) */
       video {
         width: 100%;
         height: 100%;
         object-fit: cover;
-        transform: scaleX(-1); /* Efekt lustra dla komfortu gościa */
+        transform: scaleX(-1);
       }
-
       #mute-indicator {
         position: absolute;
         top: 10px;
@@ -59,7 +55,6 @@
         font-size: 0.8em;
         z-index: 10;
       }
-
       .settings-group {
         text-align: left;
         margin-bottom: 15px;
@@ -80,7 +75,6 @@
         border-radius: 5px;
         box-sizing: border-box;
       }
-
       .checkbox-group {
         display: flex;
         align-items: center;
@@ -93,7 +87,6 @@
         height: 20px;
         cursor: pointer;
       }
-
       button {
         padding: 15px;
         font-size: 18px;
@@ -114,7 +107,6 @@
         background: #555;
         cursor: not-allowed;
       }
-
       #logs {
         margin-top: 20px;
         color: #aaa;
@@ -133,11 +125,9 @@
       .success {
         color: #00ff00;
       }
-
       #target-id {
         display: none;
       }
-
       .footer-credits {
         position: fixed;
         bottom: 15px;
@@ -207,22 +197,14 @@
 
       const urlParams = new URLSearchParams(window.location.search);
       const useStunOnly = urlParams.get("stunonly");
+      const isMulti = urlParams.get("multi");
+
       const selectedConfig = useStunOnly
         ? [{ urls: "stun:stun.l.google.com:19302" }]
         : [
             { urls: "stun:stun.l.google.com:19302" },
             {
               urls: "turn:openrelay.metered.ca:80?transport=udp",
-              username: "openrelayproject",
-              credential: "openrelayproject",
-            },
-            {
-              urls: "turn:openrelay.metered.ca:80?transport=tcp",
-              username: "openrelayproject",
-              credential: "openrelayproject",
-            },
-            {
-              urls: "turn:openrelay.metered.ca:443?transport=udp",
               username: "openrelayproject",
               credential: "openrelayproject",
             },
@@ -238,7 +220,12 @@
       });
 
       let localStream = null;
-      let globalConn = null;
+      let globalConn = null; // Standard Mode
+      let directorConn = null; // Multi Mode
+
+      // Przechowujemy listę ID aktywnych połączeń wideo, aby nie dzwonić 2 razy
+      const activeCallIds = [];
+
       const videoSelect = document.getElementById("videoSource");
       const audioSelect = document.getElementById("audioSource");
 
@@ -257,20 +244,19 @@
       };
 
       async function requestPermissions() {
-        try {
+        /* ... */ try {
           const stream = await navigator.mediaDevices.getUserMedia({
             video: true,
             audio: true,
           });
           stream.getTracks().forEach((track) => track.stop());
         } catch (err) {
-          log("Błąd uprawnień: " + err.name, "error");
-          alert("Musisz zezwolić na dostęp do kamery i mikrofonu!");
+          alert("Brak uprawnień!");
         }
       }
-
       async function getDevices() {
-        const devices = await navigator.mediaDevices.enumerateDevices();
+        /* ... */ const devices =
+          await navigator.mediaDevices.enumerateDevices();
         videoSelect.innerHTML = "";
         audioSelect.innerHTML = "";
         devices.forEach((device) => {
@@ -285,21 +271,21 @@
           }
         });
       }
-
       async function startPreview() {
         if (localStream)
           localStream.getTracks().forEach((track) => track.stop());
-        const videoSource = videoSelect.value;
-        const audioSource = audioSelect.value;
-
         const constraints = {
           video: {
-            deviceId: videoSource ? { exact: videoSource } : undefined,
+            deviceId: videoSelect.value
+              ? { exact: videoSelect.value }
+              : undefined,
             width: { ideal: 1920 },
             height: { ideal: 1080 },
           },
           audio: {
-            deviceId: audioSource ? { exact: audioSource } : undefined,
+            deviceId: audioSelect.value
+              ? { exact: audioSelect.value }
+              : undefined,
           },
         };
         try {
@@ -349,17 +335,91 @@
           log("Ustawiono priorytet: Motion");
         }
 
-        const call = peer.call(targetId, localStream);
-        globalConn = peer.connect(targetId);
+        if (isMulti) {
+          // TRYB MULTI
+          log("Tryb Multi: Łączę z Reżyserem...");
+          directorConn = peer.connect(targetId);
 
-        globalConn.on("open", () => {
-          log("Połączenie zestawione!", "success");
-          btn.innerText = "JESTEŚ NA WIZJI";
-          btn.style.background = "#dc3545";
+          directorConn.on("open", () => {
+            log("Połączono z Reżyserem. Pobieram listę ekranów...", "success");
+            directorConn.send({ type: "get-obs-list" });
+            directorConn.send({ type: "identify", name: username });
+            const isMuted = document.getElementById("start-muted").checked;
+            directorConn.send({ type: "mic-status", muted: isMuted });
 
+            setInterval(() => {
+              if (directorConn.open) directorConn.send({ type: "heartbeat" });
+            }, 2000);
+          });
+
+          directorConn.on("data", (data) => {
+            // Otrzymaliśmy listę OBS - dzwonimy do nowych
+            if (data.type === "obs-list") {
+              log(`Aktualizacja listy OBS: znaleziono ${data.targets.length}`);
+              data.targets.forEach((obsId) => {
+                // Sprawdzamy czy już nie dzwonimy do tego ID
+                if (!activeCallIds.includes(obsId)) {
+                  callSingleOBS(obsId, username, highBitrate);
+                }
+              });
+              btn.innerText = "JESTEŚ NA WIZJI (MULTI)";
+              btn.style.background = "#dc3545";
+            }
+
+            // Reżyser wymusza odświeżenie listy OBS
+            if (data.type === "force-sync") {
+              log(
+                "Otrzymano rozkaz synchronizacji. Szukam nowych ekranów...",
+                "info"
+              );
+              directorConn.send({ type: "get-obs-list" });
+            }
+
+            handleRemoteCommand(data);
+          });
+        } else {
+          // TRYB STANDARD
+          log("Tryb Standard: Dzwonię do OBS...");
+          callSingleOBS(targetId, username, highBitrate);
+        }
+
+        window.addEventListener("beforeunload", () => {
+          if (directorConn && directorConn.open)
+            directorConn.send({ type: "leave" });
+          if (globalConn && globalConn.open) globalConn.send({ type: "leave" });
+        });
+      }
+
+      function callSingleOBS(obsId, username, highBitrate) {
+        log(`Dzwonię do ekranu: ${obsId}`);
+
+        // Rejestrujemy połączenie w tablicy
+        activeCallIds.push(obsId);
+
+        const call = peer.call(obsId, localStream);
+        const conn = peer.connect(obsId);
+
+        if (!isMulti) globalConn = conn;
+
+        conn.on("open", () => {
           const isMuted = document.getElementById("start-muted").checked;
-          globalConn.send({ type: "identify", name: username });
-          globalConn.send({ type: "mic-status", muted: isMuted });
+          conn.send({ type: "identify", name: username });
+          conn.send({ type: "mic-status", muted: isMuted });
+          if (!isMulti) {
+            log("Połączenie zestawione!", "success");
+            document.getElementById("join-btn").innerText = "JESTEŚ NA WIZJI";
+            document.getElementById("join-btn").style.background = "#dc3545";
+          }
+        });
+
+        // Obsługa rozłączenia (usuń z listy aktywnych, żeby można było zadzwonić ponownie)
+        call.on("close", () => {
+          const idx = activeCallIds.indexOf(obsId);
+          if (idx > -1) activeCallIds.splice(idx, 1);
+        });
+        call.on("error", () => {
+          const idx = activeCallIds.indexOf(obsId);
+          if (idx > -1) activeCallIds.splice(idx, 1);
         });
 
         if (highBitrate) {
@@ -374,39 +434,31 @@
               params.encodings[0].maxBitrate = 6000000;
               sender
                 .setParameters(params)
-                .then(() => log("🔥 Bitrate odblokowany (6 Mbps)!", "success"))
-                .catch((e) => log("Błąd Bitrate Unlock: " + e, "error"));
+                .then(() => {})
+                .catch((e) => {});
             }
           }, 1000);
         }
 
-        globalConn.on("data", (data) => {
-          if (data.type === "mute-cmd") {
-            const audioTrack = localStream.getAudioTracks()[0];
-            if (audioTrack) {
-              audioTrack.enabled = !data.state;
-              toggleMuteUI(data.state);
-              document.getElementById("start-muted").checked = data.state;
-              globalConn.send({ type: "mic-status", muted: data.state });
-            }
-          }
-        });
-
-        const handleClose = () => {
-          log("Rozłączono.", "error");
-          setTimeout(() => location.reload(), 3000);
-        };
-        call.on("close", handleClose);
-        globalConn.on("close", handleClose);
-
+        conn.on("data", (data) => handleRemoteCommand(data));
         setInterval(() => {
-          if (globalConn && globalConn.open)
-            globalConn.send({ type: "heartbeat" });
+          if (conn.open) conn.send({ type: "heartbeat" });
         }, 2000);
+      }
 
-        window.addEventListener("beforeunload", () => {
-          if (globalConn && globalConn.open) globalConn.send({ type: "leave" });
-        });
+      function handleRemoteCommand(data) {
+        if (data.type === "mute-cmd") {
+          const audioTrack = localStream.getAudioTracks()[0];
+          if (audioTrack) {
+            audioTrack.enabled = !data.state;
+            toggleMuteUI(data.state);
+            document.getElementById("start-muted").checked = data.state;
+
+            const msg = { type: "mic-status", muted: data.state };
+            if (directorConn && directorConn.open) directorConn.send(msg);
+            if (globalConn && globalConn.open) globalConn.send(msg);
+          }
+        }
       }
     </script>
   </body>

@@ -38,13 +38,10 @@
         object-fit: cover;
         display: block;
       }
-
-      /* LUSTRO */
       video.mirror-effect {
         transform: scaleX(-1);
       }
 
-      /* OVERLAYS */
       .mute-icon {
         position: absolute;
         top: 10px;
@@ -80,8 +77,7 @@
         display: none !important;
       }
 
-      /* --- INTELIGENTNY GRID (Auto-Resize) --- */
-
+      /* UKŁADY */
       .layout-grid {
         display: flex;
         flex-wrap: wrap;
@@ -91,56 +87,40 @@
         padding: 20px;
         box-sizing: border-box;
       }
-
-      /* Domyślny rozmiar (zabezpieczenie) */
       .layout-grid .video-box {
         width: 45%;
         height: 45%;
       }
-
-      /* 1 Osoba */
       .layout-grid[data-count="1"] .video-box {
         width: 85%;
         height: 85%;
       }
-
-      /* 2 Osoby */
       .layout-grid[data-count="2"] .video-box {
         width: 48%;
         height: 60%;
       }
-
-      /* 3-4 Osoby */
       .layout-grid[data-count="3"] .video-box,
       .layout-grid[data-count="4"] .video-box {
         width: 45%;
         height: 45%;
       }
-
-      /* 5-6 Osób */
       .layout-grid[data-count="5"] .video-box,
       .layout-grid[data-count="6"] .video-box {
         width: 32%;
         height: 45%;
       }
-
-      /* 7-9 Osób */
       .layout-grid[data-count="7"] .video-box,
       .layout-grid[data-count="8"] .video-box,
       .layout-grid[data-count="9"] .video-box {
         width: 32%;
         height: 30%;
       }
-
-      /* 10-12 Osób (POPRAWIONE) */
       .layout-grid[data-count="10"] .video-box,
       .layout-grid[data-count="11"] .video-box,
       .layout-grid[data-count="12"] .video-box {
         width: 23%;
         height: 23%;
       }
-
-      /* --- UKŁADY SZTYWNE (Z naprawionym ucinaniem) --- */
 
       .layout-sidebar-right {
         display: flex;
@@ -156,7 +136,6 @@
         height: 180px;
         margin-bottom: 15px;
       }
-
       .layout-sidebar-left {
         display: flex;
         flex-direction: column;
@@ -171,7 +150,6 @@
         height: 180px;
         margin-bottom: 15px;
       }
-
       .layout-bottom {
         display: flex;
         flex-direction: row;
@@ -186,7 +164,6 @@
         height: 157px;
         margin: 0 10px;
       }
-
       .layout-top {
         display: flex;
         flex-direction: row;
@@ -201,7 +178,6 @@
         height: 157px;
         margin: 0 10px;
       }
-
       .layout-split {
         display: flex;
         flex-direction: row;
@@ -227,6 +203,7 @@
       const myID = urlParams.get("room") || "test-room";
       const useStunOnly = urlParams.get("stunonly");
       const useULL = urlParams.get("ull");
+      const isMulti = urlParams.get("multi");
 
       const selectedConfig = useStunOnly
         ? [{ urls: "stun:stun.l.google.com:19302" }]
@@ -254,7 +231,9 @@
             },
           ];
 
-      const peer = new Peer(myID, { config: { iceServers: selectedConfig } });
+      const peer = new Peer(isMulti ? undefined : myID, {
+        config: { iceServers: selectedConfig },
+      });
       const container = document.getElementById("video-container");
 
       const guests = {};
@@ -262,13 +241,31 @@
       let directorConn = null;
       const statsCache = {};
 
-      peer.on("open", (id) => console.log("OBS gotowy. ID: " + id));
+      peer.on("open", (id) => {
+        console.log("OBS gotowy. ID: " + id);
+        if (isMulti) connectToDirector(myID);
+      });
+
+      function connectToDirector(targetId) {
+        directorConn = peer.connect(targetId);
+        directorConn.on("open", () => {
+          console.log("Połączono z Reżyserem.");
+          directorConn.send({ type: "register-obs" });
+        });
+        directorConn.on("data", (data) => handleData(data));
+      }
 
       // 1. ODBIÓR WIDEO
       peer.on("call", (call) => {
         call.answer();
+        // Inicjalizacja gościa z domyślnym stanem Mirror: false
         if (!guests[call.peer])
-          guests[call.peer] = { name: "Łączenie...", muted: false, conn: null };
+          guests[call.peer] = {
+            name: "Łączenie...",
+            muted: false,
+            mirrored: false,
+            conn: null,
+          };
         guests[call.peer].call = call;
 
         if (useULL) {
@@ -307,62 +304,133 @@
             directorConn = conn;
             sendGuestListToDirector();
           }
-          if (data.type === "layout") container.className = data.mode;
-
-          if (data.type === "toggle-labels") {
-            if (data.show) container.classList.add("show-labels");
-            else container.classList.remove("show-labels");
-          }
-          if (data.type === "toggle-icons") {
-            if (data.show) container.classList.add("show-icons");
-            else container.classList.remove("show-icons");
-          }
-
-          if (data.type === "refresh-cam") {
-            if (data.targetId === "all")
-              Object.keys(guests).forEach((id) => performRefresh(id));
-            else performRefresh(data.targetId);
-          }
-
-          if (data.type === "toggle-mirror") {
-            const box = document.getElementById(`box-${data.targetId}`);
-            if (box) {
-              const video = box.querySelector("video");
-              if (video) video.classList.toggle("mirror-effect");
-            }
-          }
-
-          if (data.type === "remote-mute") {
-            if (guests[data.targetId] && guests[data.targetId].conn) {
-              guests[data.targetId].conn.send({
-                type: "mute-cmd",
-                state: data.state,
-              });
-            }
-          }
-          if (data.type === "identify") {
-            if (!guests[conn.peer]) guests[conn.peer] = {};
-            guests[conn.peer].name = data.name || "Gość";
-            guests[conn.peer].muted = false;
-            guests[conn.peer].conn = conn;
-            updateLabel(conn.peer, data.name);
-            sendGuestListToDirector();
-          }
-          if (data.type === "mic-status") {
-            if (guests[conn.peer]) {
-              guests[conn.peer].muted = data.muted;
-              toggleMuteIcon(conn.peer, data.muted);
-              sendGuestListToDirector();
-            }
-          }
-          if (data.type === "heartbeat") heartbeats[conn.peer] = Date.now();
-          if (data.type === "leave") removeGuest(conn.peer);
+          handleData(data, conn);
         });
         conn.on("close", () => removeGuest(conn.peer));
         conn.on("error", () => removeGuest(conn.peer));
       });
 
-      // 3. HEARTBEAT
+      function handleData(data, conn) {
+        if (data.type === "layout") container.className = data.mode;
+
+        if (data.type === "toggle-labels") {
+          if (data.show) container.classList.add("show-labels");
+          else container.classList.remove("show-labels");
+        }
+        if (data.type === "toggle-icons") {
+          if (data.show) container.classList.add("show-icons");
+          else container.classList.remove("show-icons");
+        }
+
+        if (data.type === "refresh-cam") {
+          if (data.targetId === "all")
+            Object.keys(guests).forEach((id) => performRefresh(id));
+          else performRefresh(data.targetId);
+        }
+
+        // OBSŁUGA LUSTRA (ZAPAMIĘTYWANIE STANU)
+        if (data.type === "toggle-mirror") {
+          const id = data.targetId;
+          const box = document.getElementById(`box-${id}`);
+          if (box) {
+            const video = box.querySelector("video");
+            if (video) {
+              video.classList.toggle("mirror-effect");
+              // Aktualizacja stanu w bazie
+              if (guests[id]) {
+                guests[id].mirrored = video.classList.contains("mirror-effect");
+                sendGuestListToDirector(); // Wyślij nowy stan do Reżysera
+              }
+            }
+          }
+        }
+
+        if (data.type === "remote-mute") {
+          if (guests[data.targetId] && guests[data.targetId].conn) {
+            guests[data.targetId].conn.send({
+              type: "mute-cmd",
+              state: data.state,
+            });
+          }
+        }
+        if (data.type === "identify" && conn) {
+          if (!guests[conn.peer])
+            guests[conn.peer] = { name: "Gość", muted: false, mirrored: false };
+          guests[conn.peer].name = data.name || "Gość";
+          guests[conn.peer].conn = conn;
+          updateLabel(conn.peer, data.name);
+          sendGuestListToDirector();
+        }
+        if (data.type === "mic-status" && conn) {
+          if (guests[conn.peer]) {
+            guests[conn.peer].muted = data.muted;
+            toggleMuteIcon(conn.peer, data.muted);
+            sendGuestListToDirector();
+          }
+        }
+        if (data.type === "heartbeat" && conn)
+          heartbeats[conn.peer] = Date.now();
+        if (data.type === "leave" && conn) removeGuest(conn.peer);
+      }
+
+      function updateGuestCount() {
+        const count = container.querySelectorAll(".video-box").length;
+        container.setAttribute("data-count", count);
+      }
+
+      function addVideo(stream, id) {
+        if (document.getElementById(`box-${id}`)) return;
+        heartbeats[id] = Date.now();
+        statsCache[id] = 0;
+
+        const box = document.createElement("div");
+        box.className = "video-box";
+        box.id = `box-${id}`;
+
+        const video = document.createElement("video");
+        video.srcObject = stream;
+        video.muted = true;
+        video.autoplay = true;
+        video.playsInline = true;
+
+        const audio = document.createElement("audio");
+        audio.srcObject = stream;
+        audio.muted = false;
+        audio.autoplay = true;
+        audio.id = `audio-${id}`;
+
+        const label = document.createElement("div");
+        label.className = "label";
+        label.id = `label-${id}`;
+
+        const muteIcon = document.createElement("div");
+        muteIcon.className = "mute-icon";
+        muteIcon.innerText = "🔇";
+        muteIcon.id = `mute-${id}`;
+
+        box.appendChild(video);
+        box.appendChild(label);
+        box.appendChild(muteIcon);
+        box.appendChild(audio);
+        container.appendChild(box);
+
+        updateGuestCount();
+
+        video.play().catch((e) => console.error(e));
+        audio.play().catch((e) => console.warn(e));
+      }
+
+      function removeGuest(id) {
+        if (document.getElementById(`box-${id}`)) {
+          document.getElementById(`box-${id}`).remove();
+          delete guests[id];
+          delete heartbeats[id];
+          delete statsCache[id];
+          updateGuestCount();
+          sendGuestListToDirector();
+        }
+      }
+
       setInterval(async () => {
         const now = Date.now();
         const statsReport = {};
@@ -406,15 +474,6 @@
         }
       }, 1000);
 
-      // --- FUNKCJE POMOCNICZE ---
-
-      function updateGuestCount() {
-        // Liczymy elementy .video-box w kontenerze
-        const count = container.querySelectorAll(".video-box").length;
-        container.setAttribute("data-count", count);
-        console.log("Liczba gości w Gridzie:", count);
-      }
-
       function performRefresh(id) {
         const box = document.getElementById(`box-${id}`);
         if (!box) return;
@@ -433,66 +492,11 @@
         }
       }
 
-      function addVideo(stream, id) {
-        if (document.getElementById(`box-${id}`)) return;
-        heartbeats[id] = Date.now();
-        statsCache[id] = 0;
-
-        const box = document.createElement("div");
-        box.className = "video-box";
-        box.id = `box-${id}`;
-
-        const video = document.createElement("video");
-        video.srcObject = stream;
-        video.muted = true;
-        video.autoplay = true;
-        video.playsInline = true;
-
-        const audio = document.createElement("audio");
-        audio.srcObject = stream;
-        audio.muted = false;
-        audio.autoplay = true;
-        audio.id = `audio-${id}`;
-
-        const label = document.createElement("div");
-        label.className = "label";
-        label.id = `label-${id}`;
-
-        const muteIcon = document.createElement("div");
-        muteIcon.className = "mute-icon";
-        muteIcon.innerText = "🔇";
-        muteIcon.id = `mute-${id}`;
-
-        box.appendChild(video);
-        box.appendChild(label);
-        box.appendChild(muteIcon);
-        box.appendChild(audio);
-        container.appendChild(box);
-
-        updateGuestCount(); // <-- Aktualizujemy licznik po dodaniu
-
-        video.play().catch((e) => console.error(e));
-        audio.play().catch((e) => console.warn(e));
-      }
-
-      function removeGuest(id) {
-        if (document.getElementById(`box-${id}`)) {
-          document.getElementById(`box-${id}`).remove();
-          delete guests[id];
-          delete heartbeats[id];
-          delete statsCache[id];
-
-          updateGuestCount(); // <-- Aktualizujemy licznik po usunięciu
-          sendGuestListToDirector();
-        }
-      }
-
       function updateLabel(id, name) {
         const label = document.getElementById(`label-${id}`);
         if (label) {
           if (name && name.trim() !== "") {
             label.innerText = name;
-            // Pamiętaj: CSS .show-labels decyduje o ostatecznej widoczności
             label.style.display = "block";
           } else {
             label.style.display = "none";
@@ -511,6 +515,7 @@
             id: id,
             name: guests[id].name,
             muted: guests[id].muted,
+            mirrored: guests[id].mirrored, // WYSYŁAMY STAN LUSTRA
           }));
           directorConn.send({ type: "guest-list", list: safeList });
         }

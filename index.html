@@ -39,11 +39,14 @@
         transform: scale(1.05);
       }
 
+      /* Flexbox dla łatwej zmiany kolejności */
       #links-area {
         display: none;
         margin-top: 30px;
         text-align: left;
+        flex-direction: column;
       }
+
       .link-group {
         margin-bottom: 20px;
         background: #333;
@@ -55,6 +58,7 @@
         color: #aaa;
         font-size: 0.9em;
         margin-bottom: 5px;
+        font-weight: bold;
       }
       .link-group input {
         width: 95%;
@@ -106,7 +110,6 @@
         gap: 10px;
       }
 
-      /* Stopka */
       .footer-credits {
         position: fixed;
         bottom: 15px;
@@ -124,7 +127,6 @@
       <h1>🎥 Stream Layout Generator</h1>
       <p>Stwórz pokój, wyślij linki i steruj układem kamer w OBS.</p>
 
-      <!-- OPCJA 1: STUN ONLY -->
       <div class="option-box">
         <label class="checkbox-label">
           <input
@@ -142,7 +144,6 @@
         </label>
       </div>
 
-      <!-- OPCJA 2: ULTRA LOW LATENCY (NOWOŚĆ) -->
       <div class="option-box" style="border-color: #d63384">
         <label class="checkbox-label">
           <input
@@ -153,9 +154,25 @@
           />
           <div>
             <strong>⚡ Ultra Low Latency (Brak bufora)</strong><br />
+            <small style="color: #888">Wyłącza wygładzanie ruchu w OBS.</small>
+          </div>
+        </label>
+      </div>
+
+      <div class="option-box" style="border-color: #ff9800">
+        <label class="checkbox-label">
+          <!-- DOMYŚLNIE ZAZNACZONE (CHECKED) -->
+          <input
+            type="checkbox"
+            id="multi-mode"
+            style="width: 20px; height: 20px"
+            checked
+          />
+          <div>
+            <strong>👥 Multi-Viewer Mode (Wiele OBS-ów)</strong><br />
             <small style="color: #888"
-              >Wyłącza wygładzanie ruchu. Zero opóźnienia, ale ryzyko
-              mikro-acięć.</small
+              >Wymaga uruchomienia Reżysera jako pierwszego. Wymaga dobrego
+              łącza.</small
             >
           </div>
         </label>
@@ -167,18 +184,22 @@
       </button>
 
       <div id="links-area">
-        <h3>Twoje linki:</h3>
-
-        <div class="link-group">
-          <label>1. Link do OBS (Wklej jako Browser Source):</label>
+        <!-- GRUPA 1: OBS (Kolejność zmieniana przez JS) -->
+        <div class="link-group" id="group-obs">
+          <label id="label-obs">Link do OBS:</label>
           <input type="text" id="obs-link" readonly />
           <button class="action-btn copy-btn" onclick="copy('obs-link')">
             📋 Kopiuj
           </button>
+          <!-- DODANO PRZYCISK OTWÓRZ: -->
+          <button class="action-btn open-btn" onclick="openLink('obs-link')">
+            ↗ Otwórz
+          </button>
         </div>
 
-        <div class="link-group">
-          <label>2. Panel Reżysera (Otwórz na telefonie/laptopie):</label>
+        <!-- GRUPA 2: REŻYSER (Kolejność zmieniana przez JS) -->
+        <div class="link-group" id="group-dir">
+          <label id="label-dir">Panel Reżysera:</label>
           <input type="text" id="director-link" readonly />
           <button class="action-btn copy-btn" onclick="copy('director-link')">
             📋 Kopiuj
@@ -191,8 +212,9 @@
           </button>
         </div>
 
-        <div class="link-group">
-          <label>3. Link dla Gości (Wyślij znajomym):</label>
+        <!-- GRUPA 3: GOŚĆ -->
+        <div class="link-group" id="group-guest" style="order: 3">
+          <label id="label-guest">3. Link dla Gości (Wyślij znajomym):</label>
           <input type="text" id="guest-link" readonly />
           <button class="action-btn copy-btn" onclick="copy('guest-link')">
             📋 Kopiuj
@@ -210,22 +232,20 @@
       function createRoom() {
         const roomId = Math.random().toString(36).substring(2, 9);
 
-        // Pobieramy stan obu checkboxów
         const isStunOnly = document.getElementById("stun-only").checked;
         const isULL = document.getElementById("ull-mode").checked;
+        const isMulti = document.getElementById("multi-mode").checked;
 
-        // Budujemy parametry URL
         let params = `?room=${roomId}`;
         if (isStunOnly) params += "&stunonly=1";
-        if (isULL) params += "&ull=1"; // Parametr dla OBS
+        if (isULL) params += "&ull=1";
+        if (isMulti) params += "&multi=1";
 
         let baseUrl = window.location.href;
         if (baseUrl.endsWith("index.html"))
           baseUrl = baseUrl.replace("index.html", "");
         if (!baseUrl.endsWith("/")) baseUrl += "/";
 
-        // Generujemy linki
-        // UWAGA: &ull=1 jest potrzebny tylko w OBS, ale dla prostoty kodu możemy dodać wszędzie (inne pliki go zignorują)
         const obsUrl = `${baseUrl}obs.html${params}`;
         const directorUrl = `${baseUrl}director.html${params}`;
         const guestUrl = `${baseUrl}guest.html${params}`;
@@ -234,7 +254,34 @@
         document.getElementById("director-link").value = directorUrl;
         document.getElementById("guest-link").value = guestUrl;
 
-        document.getElementById("links-area").style.display = "block";
+        // --- ZMIANA KOLEJNOŚCI I ETYKIET W ZALEŻNOŚCI OD TRYBU ---
+        const groupObs = document.getElementById("group-obs");
+        const groupDir = document.getElementById("group-dir");
+        const labelObs = document.getElementById("label-obs");
+        const labelDir = document.getElementById("label-dir");
+
+        if (isMulti) {
+          // Tryb Multi: Reżyser jest najważniejszy (nr 1)
+          groupDir.style.order = "1";
+          groupObs.style.order = "2";
+
+          labelDir.innerHTML = "1. Panel Reżysera (⚠️ URUCHOM JAKO PIERWSZY):";
+          labelObs.innerHTML = "2. Link do OBS (Odbiornik):";
+
+          // Stylizuj label reżysera na czerwono/wyraźnie
+          labelDir.style.color = "#ff9800";
+        } else {
+          // Tryb Standard: OBS jest serwerem (nr 1)
+          groupObs.style.order = "1";
+          groupDir.style.order = "2";
+
+          labelObs.innerHTML = "1. Link do OBS (Wklej jako Browser Source):";
+          labelDir.innerHTML = "2. Panel Reżysera (Sterowanie):";
+
+          labelDir.style.color = "#aaa"; // Reset koloru
+        }
+
+        document.getElementById("links-area").style.display = "flex";
       }
 
       function copy(elementId) {
