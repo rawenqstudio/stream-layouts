@@ -39,7 +39,10 @@
         display: block;
       }
 
-      /* --- STEROWANIE WIDOCZNOŚCIĄ ELEMENTÓW --- */
+      /* KLASA DO ODBICIA LUSTRZANEGO */
+      video.mirror-effect {
+        transform: scaleX(-1);
+      }
 
       .mute-icon {
         position: absolute;
@@ -50,7 +53,7 @@
         background: rgba(0, 0, 0, 0.5);
         padding: 5px;
         border-radius: 50%;
-        display: none; /* Ukryte, chyba że JS włączy */
+        display: none;
         z-index: 20;
       }
 
@@ -67,21 +70,12 @@
         text-shadow: 1px 1px 2px black;
         border-left: 4px solid #00d2ff;
         z-index: 10;
-        display: none; /* Ukryte, chyba że JS włączy */
+        display: none;
       }
 
-      /* 
-           ZASADA NADRZĘDNA:
-           Nawet jeśli element ma display:block (bo tak ustawił skrypt od gościa),
-           to wymuszamy ukrycie, jeśli kontener główny nie ma odpowiedniej klasy-zezwolenia.
-        */
-
-      /* Jeśli kontener NIE MA klasy .show-labels -> ukryj podpisy */
       #video-container:not(.show-labels) .label {
         display: none !important;
       }
-
-      /* Jeśli kontener NIE MA klasy .show-icons -> ukryj ikony wyciszenia */
       #video-container:not(.show-icons) .mute-icon {
         display: none !important;
       }
@@ -258,7 +252,6 @@
           }
           if (data.type === "layout") container.className = data.mode;
 
-          // OBSŁUGA OSOBNEGO WŁĄCZANIA IMION I IKON
           if (data.type === "toggle-labels") {
             if (data.show) container.classList.add("show-labels");
             else container.classList.remove("show-labels");
@@ -272,6 +265,15 @@
             if (data.targetId === "all")
               Object.keys(guests).forEach((id) => performRefresh(id));
             else performRefresh(data.targetId);
+          }
+
+          // OBSŁUGA LUSTRA (NOWE)
+          if (data.type === "toggle-mirror") {
+            const box = document.getElementById(`box-${data.targetId}`);
+            if (box) {
+              const video = box.querySelector("video");
+              if (video) video.classList.toggle("mirror-effect");
+            }
           }
 
           if (data.type === "remote-mute") {
@@ -304,7 +306,6 @@
         conn.on("error", () => removeGuest(conn.peer));
       });
 
-      // Statystyki
       setInterval(async () => {
         const now = Date.now();
         const statsReport = {};
@@ -421,8 +422,6 @@
         if (label) {
           if (name && name.trim() !== "") {
             label.innerText = name;
-            // UWAGA: JavaScript ustawia 'display: block', ale CSS 'display: none !important'
-            // nadpisze to, jeśli brakuje klasy .show-labels w kontenerze.
             label.style.display = "block";
           } else {
             label.style.display = "none";
@@ -432,10 +431,7 @@
 
       function toggleMuteIcon(id, isMuted) {
         const icon = document.getElementById(`mute-${id}`);
-        if (icon) {
-          icon.style.display = isMuted ? "block" : "none";
-          // Podobnie tutaj: CSS nadpisze, jeśli brakuje .show-icons
-        }
+        if (icon) icon.style.display = isMuted ? "block" : "none";
       }
 
       function sendGuestListToDirector() {

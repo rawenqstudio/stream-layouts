@@ -36,10 +36,13 @@
         margin-bottom: 20px;
         border: 2px solid #555;
       }
+
+      /* ZMIANA TUTAJ: Dodano transform: scaleX(-1) */
       video {
         width: 100%;
         height: 100%;
         object-fit: cover;
+        transform: scaleX(-1); /* Efekt lustra dla komfortu gościa */
       }
 
       #mute-indicator {
@@ -289,7 +292,6 @@
         const videoSource = videoSelect.value;
         const audioSource = audioSelect.value;
 
-        // --- USUNIĘTO FILTRY AUDIO I LIMIT FPS ---
         const constraints = {
           video: {
             deviceId: videoSource ? { exact: videoSource } : undefined,
@@ -298,7 +300,6 @@
           },
           audio: {
             deviceId: audioSource ? { exact: audioSource } : undefined,
-            // Usunięto: echoCancellation, noiseSuppression
           },
         };
         try {
@@ -342,7 +343,6 @@
 
         log(`Dzwonię do OBS...`);
 
-        // CONTENT HINT ZACHOWANY (Płynność)
         const videoTrack = localStream.getVideoTracks()[0];
         if (videoTrack && "contentHint" in videoTrack) {
           videoTrack.contentHint = "motion";
@@ -362,7 +362,6 @@
           globalConn.send({ type: "mic-status", muted: isMuted });
         });
 
-        // BITRATE 6 MBPS (20M -> 6M -> 4M -> i teraz powrót do 6M)
         if (highBitrate) {
           setTimeout(() => {
             const pc = call.peerConnection;
@@ -372,7 +371,7 @@
             if (sender) {
               const params = sender.getParameters();
               if (!params.encodings) params.encodings = [{}];
-              params.encodings[0].maxBitrate = 6000000; // 6 Mbps
+              params.encodings[0].maxBitrate = 6000000;
               sender
                 .setParameters(params)
                 .then(() => log("🔥 Bitrate odblokowany (6 Mbps)!", "success"))

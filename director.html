@@ -50,7 +50,6 @@
         background: #e68900;
       }
 
-      /* Kolory dla nowych przycisków */
       .btn-toggle-off {
         background: #17a2b8;
       }
@@ -118,10 +117,12 @@
         color: #ff4444;
         font-weight: bold;
       }
+
       .guest-actions {
         display: flex;
-        gap: 10px;
-      }
+        gap: 5px;
+      } /* Zmniejszyłem odstęp, bo więcej przycisków */
+
       .btn-icon {
         width: 40px;
         height: 40px;
@@ -143,6 +144,12 @@
       .btn-refresh:hover {
         background: #e68900;
       }
+      .btn-mirror {
+        background: #6c757d;
+      }
+      .btn-mirror:hover {
+        background: #5a6268;
+      } /* Szary przycisk lustra */
     </style>
   </head>
   <body>
@@ -206,8 +213,6 @@
         </div>
 
         <h2 style="margin-top: 30px">⚙️ Narzędzia:</h2>
-
-        <!-- DWA OSOBNE PRZYCISKI -->
         <button
           class="btn-tool btn-toggle-off"
           id="btn-labels"
@@ -222,7 +227,6 @@
         >
           🔇 Ikony Mute: UKRYTE
         </button>
-
         <button
           class="btn-tool btn-refresh-all"
           onclick="refreshCam('all')"
@@ -261,8 +265,6 @@
         config: { iceServers: selectedConfig },
       });
       let conn = null;
-
-      // Stany widoczności
       let labelsVisible = false;
       let iconsVisible = false;
 
@@ -311,13 +313,17 @@
         if (conn && conn.open) conn.send({ type: "refresh-cam", targetId: id });
       }
 
-      // --- OBSŁUGA PRZEŁĄCZNIKÓW ---
+      // --- NOWA FUNKCJA: Przełączanie lustra ---
+      function toggleMirror(id) {
+        if (conn && conn.open) {
+          conn.send({ type: "toggle-mirror", targetId: id });
+        }
+      }
 
       function toggleLabels() {
         if (conn && conn.open) {
           labelsVisible = !labelsVisible;
           conn.send({ type: "toggle-labels", show: labelsVisible });
-
           const btn = document.getElementById("btn-labels");
           btn.innerText = labelsVisible
             ? "🔤 Podpisy: WIDOCZNE"
@@ -332,7 +338,6 @@
         if (conn && conn.open) {
           iconsVisible = !iconsVisible;
           conn.send({ type: "toggle-icons", show: iconsVisible });
-
           const btn = document.getElementById("btn-icons");
           btn.innerText = iconsVisible
             ? "🔇 Ikony Mute: WIDOCZNE"
@@ -342,8 +347,6 @@
             : "btn-tool btn-toggle-off";
         }
       }
-
-      // -----------------------------
 
       function renderGuestList(list) {
         const container = document.getElementById("guest-list");
@@ -368,6 +371,7 @@
                         <span id="stats-${guest.id}" class="guest-stats">Czekam na dane...</span>
                     </div>
                     <div class="guest-actions">
+                        <button class="btn-icon btn-mirror" onclick="toggleMirror('${guest.id}')" title="Lustrzane odbicie">🪞</button>
                         <button class="btn-icon btn-refresh" onclick="refreshCam('${guest.id}')" title="Odśwież (Napraw opóźnienie)">🔄</button>
                         <button class="btn-icon btn-mic ${micClass}" onclick="toggleGuestMic('${guest.id}', ${guest.muted})" title="Wycisz/Odcisz">
                             ${micIcon}
