@@ -39,11 +39,12 @@
         display: block;
       }
 
-      /* KLASA DO ODBICIA LUSTRZANEGO */
+      /* LUSTRO */
       video.mirror-effect {
         transform: scaleX(-1);
       }
 
+      /* OVERLAYS */
       .mute-icon {
         position: absolute;
         top: 10px;
@@ -56,7 +57,6 @@
         display: none;
         z-index: 20;
       }
-
       .label {
         position: absolute;
         bottom: 10px;
@@ -80,20 +80,67 @@
         display: none !important;
       }
 
-      /* UKŁADY KAMER */
+      /* --- INTELIGENTNY GRID (Auto-Resize) --- */
+
       .layout-grid {
         display: flex;
         flex-wrap: wrap;
         justify-content: center;
-        align-items: center;
+        align-content: center; /* Centruje rzędy w pionie */
         gap: 15px;
         padding: 20px;
         box-sizing: border-box;
       }
+
+      /* Domyślny rozmiar (zabezpieczenie) */
       .layout-grid .video-box {
         width: 45%;
         height: 45%;
       }
+
+      /* 1 Osoba: Prawie pełny ekran */
+      .layout-grid[data-count="1"] .video-box {
+        width: 85%;
+        height: 85%;
+      }
+
+      /* 2 Osoby: Obok siebie, duże */
+      .layout-grid[data-count="2"] .video-box {
+        width: 48%;
+        height: 60%;
+      }
+
+      /* 3-4 Osoby: Klasyczne 2x2 */
+      .layout-grid[data-count="3"] .video-box,
+      .layout-grid[data-count="4"] .video-box {
+        width: 45%;
+        height: 45%;
+      }
+
+      /* 5-6 Osób: 3 w rzędzie (układ 3x2) */
+      .layout-grid[data-count="5"] .video-box,
+      .layout-grid[data-count="6"] .video-box {
+        width: 32%;
+        height: 45%;
+      }
+
+      /* 7-9 Osób: 3x3 */
+      .layout-grid[data-count="7"] .video-box,
+      .layout-grid[data-count="8"] .video-box,
+      .layout-grid[data-count="9"] .video-box {
+        width: 32%;
+        height: 30%;
+      }
+
+      /* 10+ Osób: 4x4 (lub więcej) */
+      .layout-grid[data-count="10"] .video-box,
+      .layout-grid[data-count="11"] .video-box,
+      .layout-grid[data-count="12"] .video-box {
+        width: 23%;
+        height: 23%;
+      }
+
+      /* POZOSTAŁE UKŁADY (Sztywne) */
       .layout-sidebar-right {
         display: flex;
         flex-direction: column;
@@ -107,6 +154,7 @@
         height: 180px;
         margin-bottom: 15px;
       }
+
       .layout-sidebar-left {
         display: flex;
         flex-direction: column;
@@ -120,6 +168,7 @@
         height: 180px;
         margin-bottom: 15px;
       }
+
       .layout-bottom {
         display: flex;
         flex-direction: row;
@@ -133,6 +182,7 @@
         height: 157px;
         margin: 0 10px;
       }
+
       .layout-top {
         display: flex;
         flex-direction: row;
@@ -146,6 +196,7 @@
         height: 157px;
         margin: 0 10px;
       }
+
       .layout-split {
         display: flex;
         flex-direction: row;
@@ -163,7 +214,7 @@
     </style>
   </head>
   <body>
-    <div id="video-container" class="layout-grid"></div>
+    <div id="video-container" class="layout-grid" data-count="0"></div>
 
     <script>
       const urlParams = new URLSearchParams(window.location.search);
@@ -267,7 +318,6 @@
             else performRefresh(data.targetId);
           }
 
-          // OBSŁUGA LUSTRA (NOWE)
           if (data.type === "toggle-mirror") {
             const box = document.getElementById(`box-${data.targetId}`);
             if (box) {
@@ -306,6 +356,7 @@
         conn.on("error", () => removeGuest(conn.peer));
       });
 
+      // 3. HEARTBEAT
       setInterval(async () => {
         const now = Date.now();
         const statsReport = {};
@@ -348,6 +399,15 @@
           directorConn.send({ type: "stats-update", stats: statsReport });
         }
       }, 1000);
+
+      // --- FUNKCJE POMOCNICZE ---
+
+      function updateGuestCount() {
+        // Liczymy elementy .video-box w kontenerze
+        const count = container.querySelectorAll(".video-box").length;
+        container.setAttribute("data-count", count);
+        console.log("Liczba gości w Gridzie:", count);
+      }
 
       function performRefresh(id) {
         const box = document.getElementById(`box-${id}`);
@@ -403,6 +463,8 @@
         box.appendChild(audio);
         container.appendChild(box);
 
+        updateGuestCount(); // <-- Aktualizujemy licznik po dodaniu
+
         video.play().catch((e) => console.error(e));
         audio.play().catch((e) => console.warn(e));
       }
@@ -413,6 +475,8 @@
           delete guests[id];
           delete heartbeats[id];
           delete statsCache[id];
+
+          updateGuestCount(); // <-- Aktualizujemy licznik po usunięciu
           sendGuestListToDirector();
         }
       }
@@ -422,6 +486,7 @@
         if (label) {
           if (name && name.trim() !== "") {
             label.innerText = name;
+            // Pamiętaj: CSS .show-labels decyduje o ostatecznej widoczności
             label.style.display = "block";
           } else {
             label.style.display = "none";
