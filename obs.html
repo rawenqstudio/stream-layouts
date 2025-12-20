@@ -86,7 +86,7 @@
         display: flex;
         flex-wrap: wrap;
         justify-content: center;
-        align-content: center; /* Centruje rzędy w pionie */
+        align-content: center;
         gap: 15px;
         padding: 20px;
         box-sizing: border-box;
@@ -98,33 +98,33 @@
         height: 45%;
       }
 
-      /* 1 Osoba: Prawie pełny ekran */
+      /* 1 Osoba */
       .layout-grid[data-count="1"] .video-box {
         width: 85%;
         height: 85%;
       }
 
-      /* 2 Osoby: Obok siebie, duże */
+      /* 2 Osoby */
       .layout-grid[data-count="2"] .video-box {
         width: 48%;
         height: 60%;
       }
 
-      /* 3-4 Osoby: Klasyczne 2x2 */
+      /* 3-4 Osoby */
       .layout-grid[data-count="3"] .video-box,
       .layout-grid[data-count="4"] .video-box {
         width: 45%;
         height: 45%;
       }
 
-      /* 5-6 Osób: 3 w rzędzie (układ 3x2) */
+      /* 5-6 Osób */
       .layout-grid[data-count="5"] .video-box,
       .layout-grid[data-count="6"] .video-box {
         width: 32%;
         height: 45%;
       }
 
-      /* 7-9 Osób: 3x3 */
+      /* 7-9 Osób */
       .layout-grid[data-count="7"] .video-box,
       .layout-grid[data-count="8"] .video-box,
       .layout-grid[data-count="9"] .video-box {
@@ -132,7 +132,7 @@
         height: 30%;
       }
 
-      /* 10+ Osób: 4x4 (lub więcej) */
+      /* 10-12 Osób (POPRAWIONE) */
       .layout-grid[data-count="10"] .video-box,
       .layout-grid[data-count="11"] .video-box,
       .layout-grid[data-count="12"] .video-box {
@@ -140,7 +140,8 @@
         height: 23%;
       }
 
-      /* POZOSTAŁE UKŁADY (Sztywne) */
+      /* --- UKŁADY SZTYWNE (Z naprawionym ucinaniem) --- */
+
       .layout-sidebar-right {
         display: flex;
         flex-direction: column;
@@ -148,6 +149,7 @@
         align-items: flex-end;
         padding-right: 20px;
         height: 100vh;
+        box-sizing: border-box;
       }
       .layout-sidebar-right .video-box {
         width: 320px;
@@ -162,6 +164,7 @@
         align-items: flex-start;
         padding-left: 20px;
         height: 100vh;
+        box-sizing: border-box;
       }
       .layout-sidebar-left .video-box {
         width: 320px;
@@ -176,6 +179,7 @@
         align-items: flex-end;
         padding-bottom: 20px;
         height: 100vh;
+        box-sizing: border-box;
       }
       .layout-bottom .video-box {
         width: 280px;
@@ -190,6 +194,7 @@
         align-items: flex-start;
         padding-top: 20px;
         height: 100vh;
+        box-sizing: border-box;
       }
       .layout-top .video-box {
         width: 280px;
@@ -205,6 +210,7 @@
         align-content: center;
         padding: 20px 40px;
         height: 100vh;
+        box-sizing: border-box;
       }
       .layout-split .video-box {
         width: 300px;
