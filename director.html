@@ -24,6 +24,7 @@
         color: white;
         transition: 0.2s;
       }
+
       .btn-layout {
         background: #007bff;
         width: 45%;
@@ -34,6 +35,7 @@
       .btn-layout:hover {
         background: #0056b3;
       }
+
       .btn-tool {
         width: 93%;
         padding: 10px;
@@ -53,6 +55,7 @@
       .btn-sync:hover {
         background: #520dc2;
       }
+
       .btn-toggle-off {
         background: #17a2b8;
       }
@@ -120,19 +123,23 @@
         color: #ff4444;
         font-weight: bold;
       }
+
       .guest-actions {
         display: flex;
         gap: 5px;
+        align-items: center;
       }
       .btn-icon {
-        width: 40px;
-        height: 40px;
+        width: 35px;
+        height: 35px;
         padding: 0;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 20px;
+        font-size: 18px;
       }
+
+      /* Kolory przycisków */
       .mic-on {
         background: #28a745;
       }
@@ -145,19 +152,23 @@
       .btn-refresh:hover {
         background: #e68900;
       }
-      /* Kolory dla Lustra */
-      .mirror-off {
+      .btn-mirror {
         background: #6c757d;
       }
-      .mirror-off:hover {
+      .btn-mirror:hover {
         background: #5a6268;
       }
       .mirror-on {
         background: #007bff;
         border: 2px solid white;
       }
-      .mirror-on:hover {
-        background: #0056b3;
+
+      .btn-move {
+        background: #343a40;
+        font-size: 14px;
+      }
+      .btn-move:hover {
+        background: #495057;
       }
     </style>
   </head>
@@ -169,6 +180,8 @@
 
       <div class="controls" id="control-panel">
         <h2>🎥 Układ kamer:</h2>
+
+        <!-- GRID (Pełna szerokość) -->
         <div
           style="
             margin-bottom: 15px;
@@ -184,6 +197,8 @@
             🔳 Pełna Siatka (Grid)
           </button>
         </div>
+
+        <!-- Układy standardowe (2x2) -->
         <div
           style="
             display: flex;
@@ -211,6 +226,8 @@
             ➡️ Prawo
           </button>
         </div>
+
+        <!-- SPLIT (Pełna szerokość) -->
         <div style="margin-top: 10px">
           <button
             class="btn-layout"
@@ -218,6 +235,17 @@
             style="width: 90%; background: #e83e8c"
           >
             ↔️ Obie Strony (Split)
+          </button>
+        </div>
+
+        <!-- CENTER STAGE (Pełna szerokość - Pod spodem) -->
+        <div style="margin-top: 5px">
+          <button
+            class="btn-layout"
+            onclick="sendLayout('layout-center-stage')"
+            style="width: 90%; background: #6610f2"
+          >
+            ⭐️ Center Stage
           </button>
         </div>
 
@@ -280,10 +308,12 @@
         config: { iceServers: selectedConfig },
       });
 
-      let conn = null; // Standard Mode
-      const obsClients = []; // Multi
+      let conn = null;
+      const obsClients = [];
       const guestConnections = [];
+
       const multiGuestsState = {};
+      let guestOrder = [];
 
       let labelsVisible = false;
       let iconsVisible = false;
@@ -334,6 +364,8 @@
             connection.send({ type: "toggle-labels", show: labelsVisible });
             connection.send({ type: "toggle-icons", show: iconsVisible });
             connection.send({ type: "layout", mode: "layout-grid" });
+            if (guestOrder.length > 0)
+              connection.send({ type: "reorder-guests", order: guestOrder });
           }
           if (data.type === "get-obs-list") {
             if (!guestConnections.includes(connection))
@@ -348,8 +380,10 @@
           if (idx > -1) obsClients.splice(idx, 1);
           idx = guestConnections.indexOf(connection);
           if (idx > -1) guestConnections.splice(idx, 1);
+
           if (multiGuestsState[connection.peer]) {
             delete multiGuestsState[connection.peer];
+            guestOrder = guestOrder.filter((id) => id !== connection.peer);
             refreshMultiModeUI();
           }
           updateStatusMsg();
@@ -364,11 +398,18 @@
       }
 
       function handleData(data, sourceConn) {
-        // STANDARD
-        if (data.type === "guest-list" && !isMulti) renderGuestList(data.list);
+        if (data.type === "guest-list" && !isMulti) {
+          data.list.forEach((g) => {
+            multiGuestsState[g.id] = g;
+            if (!guestOrder.includes(g.id)) guestOrder.push(g.id);
+          });
+          const newIds = data.list.map((g) => g.id);
+          guestOrder = guestOrder.filter((id) => newIds.includes(id));
+          refreshMultiModeUI();
+        }
+
         if (data.type === "stats-update") updateStats(data.stats);
 
-        // MULTI
         if (isMulti) {
           if (data.type === "identify" && sourceConn) {
             if (!guestConnections.includes(sourceConn))
@@ -377,9 +418,11 @@
               id: sourceConn.peer,
               name: data.name || "Gość",
               muted: false,
-              mirrored: false, // Domyślnie
+              mirrored: false,
               conn: sourceConn,
             };
+            if (!guestOrder.includes(sourceConn.peer))
+              guestOrder.push(sourceConn.peer);
             refreshMultiModeUI();
             updateStatusMsg();
           }
@@ -401,13 +444,33 @@
       }
 
       function refreshMultiModeUI() {
-        const list = Object.values(multiGuestsState).map((g) => ({
-          id: g.id,
-          name: g.name,
-          muted: g.muted,
-          mirrored: g.mirrored,
-        }));
-        renderGuestList(list);
+        const sortedList = [];
+        guestOrder.forEach((id) => {
+          if (multiGuestsState[id]) sortedList.push(multiGuestsState[id]);
+        });
+        renderGuestList(sortedList);
+      }
+
+      function moveGuest(id, direction) {
+        const index = guestOrder.indexOf(id);
+        if (index === -1) return;
+
+        if (direction === "up" && index > 0) {
+          [guestOrder[index], guestOrder[index - 1]] = [
+            guestOrder[index - 1],
+            guestOrder[index],
+          ];
+        } else if (direction === "down" && index < guestOrder.length - 1) {
+          [guestOrder[index], guestOrder[index + 1]] = [
+            guestOrder[index + 1],
+            guestOrder[index],
+          ];
+        } else {
+          return;
+        }
+
+        refreshMultiModeUI();
+        broadcastCommand({ type: "reorder-guests", order: guestOrder });
       }
 
       function broadcastCommand(cmd) {
@@ -453,6 +516,14 @@
         broadcastCommand({ type: "refresh-cam", targetId: id });
       }
 
+      function toggleMirror(id) {
+        if (isMulti && multiGuestsState[id]) {
+          multiGuestsState[id].mirrored = !multiGuestsState[id].mirrored;
+          refreshMultiModeUI();
+        }
+        broadcastCommand({ type: "toggle-mirror", targetId: id });
+      }
+
       function toggleLabels() {
         labelsVisible = !labelsVisible;
         broadcastCommand({ type: "toggle-labels", show: labelsVisible });
@@ -471,17 +542,6 @@
           : "btn-tool btn-toggle-off";
       }
 
-      // --- POPRAWIONA FUNKCJA LUSTRA ---
-      function toggleMirror(id) {
-        // 1. Zmień stan lokalnie (dla Multi)
-        if (isMulti && multiGuestsState[id]) {
-          multiGuestsState[id].mirrored = !multiGuestsState[id].mirrored;
-          refreshMultiModeUI();
-        }
-        // 2. Wyślij komendę do OBS (to tam odbywa się obrót)
-        broadcastCommand({ type: "toggle-mirror", targetId: id });
-      }
-
       function renderGuestList(list) {
         const container = document.getElementById("guest-list");
         container.innerHTML = "";
@@ -491,18 +551,24 @@
           return;
         }
 
-        list.forEach((guest) => {
+        list.forEach((guest, index) => {
           const item = document.createElement("div");
           item.className = "guest-item";
 
           const micClass = guest.muted ? "mic-off" : "mic-on";
           const micIcon = guest.muted ? "🔇" : "🎤";
           const statusText = guest.muted ? "(Wyciszony)" : "";
-
-          // Styl przycisku Lustra
           const mirrorClass = guest.mirrored ? "mirror-on" : "mirror-off";
 
+          const upVisibility = index === 0 ? "visibility:hidden" : "";
+          const downVisibility =
+            index === list.length - 1 ? "visibility:hidden" : "";
+
           item.innerHTML = `
+                    <div class="guest-actions" style="margin-right: 10px;">
+                        <button class="btn-icon btn-move" onclick="moveGuest('${guest.id}', 'up')" style="${upVisibility}">⬆️</button>
+                        <button class="btn-icon btn-move" onclick="moveGuest('${guest.id}', 'down')" style="${downVisibility}">⬇️</button>
+                    </div>
                     <div class="guest-info">
                         <span class="guest-name">${guest.name} <small style="font-weight:normal; font-size:0.7em">${statusText}</small></span>
                         <span id="stats-${guest.id}" class="guest-stats">Czekam na dane...</span>

@@ -178,20 +178,64 @@
         height: 157px;
         margin: 0 10px;
       }
+
+      /* SPLIT - Naprawiony */
       .layout-split {
-        display: flex;
-        flex-direction: row;
-        flex-wrap: wrap;
-        justify-content: space-between;
+        display: grid;
+        grid-template-columns: 320px 1fr 320px;
+        grid-auto-rows: min-content;
         align-content: center;
+        row-gap: 30px;
         padding: 20px 40px;
         height: 100vh;
         box-sizing: border-box;
       }
       .layout-split .video-box {
-        width: 300px;
+        width: 100%;
+        height: 180px;
+        margin: 0;
+      }
+      .layout-split .video-box:nth-child(odd) {
+        grid-column: 1;
+        justify-self: start;
+      }
+      .layout-split .video-box:nth-child(even) {
+        grid-column: 3;
+        justify-self: end;
+      }
+
+      /* CENTER STAGE */
+      .layout-center-stage {
+        display: grid;
+        grid-template-columns: 300px 1fr 300px;
+        grid-auto-rows: min-content;
+        gap: 15px;
+        padding: 20px;
+        height: 100vh;
+        box-sizing: border-box;
+        align-content: center;
+      }
+      .layout-center-stage .video-box {
+        width: 100%;
         height: 169px;
-        margin-bottom: 30px;
+        margin: 0;
+      }
+      .layout-center-stage .video-box:nth-child(1) {
+        grid-column: 2;
+        grid-row: 1 / span 10;
+        width: 100%;
+        height: auto;
+        max-height: 90vh;
+        aspect-ratio: 16/9;
+        align-self: center;
+        z-index: 10;
+        box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
+      }
+      .layout-center-stage .video-box:nth-child(even) {
+        grid-column: 1;
+      }
+      .layout-center-stage .video-box:nth-child(odd):not(:first-child) {
+        grid-column: 3;
       }
     </style>
   </head>
@@ -255,10 +299,8 @@
         directorConn.on("data", (data) => handleData(data));
       }
 
-      // 1. ODBIÓR WIDEO
       peer.on("call", (call) => {
         call.answer();
-        // Inicjalizacja gościa z domyślnym stanem Mirror: false
         if (!guests[call.peer])
           guests[call.peer] = {
             name: "Łączenie...",
@@ -297,7 +339,6 @@
         };
       });
 
-      // 2. ODBIÓR DANYCH
       peer.on("connection", (conn) => {
         conn.on("data", (data) => {
           if (data.type === "director-hello") {
@@ -322,13 +363,26 @@
           else container.classList.remove("show-icons");
         }
 
+        // --- POPRAWKA: FIZYCZNA ZMIANA KOLEJNOŚCI DOM ---
+        if (data.type === "reorder-guests") {
+          const orderList = data.order;
+          orderList.forEach((id) => {
+            const box = document.getElementById(`box-${id}`);
+            if (box) {
+              // appendChild przenosi istniejący element na koniec
+              // Dzięki pętli forEach ułożymy je w kolejności z tablicy
+              container.appendChild(box);
+            }
+          });
+        }
+        // ------------------------------------------------
+
         if (data.type === "refresh-cam") {
           if (data.targetId === "all")
             Object.keys(guests).forEach((id) => performRefresh(id));
           else performRefresh(data.targetId);
         }
 
-        // OBSŁUGA LUSTRA (ZAPAMIĘTYWANIE STANU)
         if (data.type === "toggle-mirror") {
           const id = data.targetId;
           const box = document.getElementById(`box-${id}`);
@@ -336,11 +390,9 @@
             const video = box.querySelector("video");
             if (video) {
               video.classList.toggle("mirror-effect");
-              // Aktualizacja stanu w bazie
-              if (guests[id]) {
+              if (guests[id])
                 guests[id].mirrored = video.classList.contains("mirror-effect");
-                sendGuestListToDirector(); // Wyślij nowy stan do Reżysera
-              }
+              sendGuestListToDirector();
             }
           }
         }
@@ -386,6 +438,7 @@
         const box = document.createElement("div");
         box.className = "video-box";
         box.id = `box-${id}`;
+        // Usunięto style.order, bo teraz polegamy na DOM
 
         const video = document.createElement("video");
         video.srcObject = stream;
@@ -515,7 +568,7 @@
             id: id,
             name: guests[id].name,
             muted: guests[id].muted,
-            mirrored: guests[id].mirrored, // WYSYŁAMY STAN LUSTRA
+            mirrored: guests[id].mirrored,
           }));
           directorConn.send({ type: "guest-list", list: safeList });
         }
